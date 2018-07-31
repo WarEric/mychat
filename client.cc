@@ -6,7 +6,12 @@
 #include<sys/socket.h>
 #include<arpa/inet.h>
 #include<signal.h>
-#include"client.h"
+#include<strings.h>
+#include"ClientInfo.h"
+#include"packet.h"
+#include"write.h"
+#include"read.h"
+#define MAXLINE 4096
 
 using std::cout;
 using std::cin;
@@ -15,11 +20,16 @@ using std::string;
 
 ClientInfo *cliInfo;
 
+int max(int x, int y)
+{
+	return x > y ? x : y ;
+}
+
 bool closeTcp(ClientInfo *cli)
 {
-	if(cli->cliTcpFd >= 0)
+	if(cli->tcpfd >= 0)
 	{
-		close(cli->cliTcpFd);
+		close(cli->tcpfd);
 		cout << "Tcp socket closed" << endl;
 	}
 	return true;
@@ -27,9 +37,9 @@ bool closeTcp(ClientInfo *cli)
 
 bool closeUdp(ClientInfo *cli)
 {
-	if(cliInfo->cliUdpFd >= 0)
+	if(cliInfo->udpfd >= 0)
 	{
-		close(cliInfo->cliUdpFd);
+		close(cliInfo->udpfd);
 		cout << "Udp socket closed" << endl;
 	}
 	return true;
@@ -37,7 +47,7 @@ bool closeUdp(ClientInfo *cli)
 
 void signalHandler(int signum)
 {
-	cout << "we will exit from this chat" << endl;
+	cout << "\nwe will exit from this chat" << endl;
 	closeUdp(cliInfo);
 	closeTcp(cliInfo);
 	cout<< "exit success." << endl;
@@ -47,13 +57,49 @@ void signalHandler(int signum)
 //this an easy solution, we can make it better in another time.
 bool login(ClientInfo *cli)
 {
+
+	string type("TCP");
+
 	cout << "login:";
 	cin >> cli->name;
 	cout << "passwd:";
-	//not use now
-	cout << endl;
+	cin >> cli->passwd;
+	char buff[MAXLINE];
+
+	LoginPacket pkt(cli->name, cli->passwd);
+	int64_t datalen = encode_login_packet(pkt, buff, MAXLINE);
+
+	Writen(cli->tcpfd, &datalen, sizeof(int64_t), type);
+	Writen(cli->tcpfd, buff, datalen, type);
 
 	cout << "login successfully" << endl;
+
+	if(Read(cli->tcpfd, &datalen, sizeof(int64_t), string("TCP")) != sizeof(int64_t))
+		return false;
+
+	if(Read(cli->tcpfd, buff, datalen, string("TCP")) != datalen)
+		return false;
+
+	AuthResultPacket res;
+	if(decode_auth_result_packet(res, buff) == false)
+	{
+		cout << "auth result decode error!" << endl;
+		return false;
+	}
+
+	if(res.type != AUTH_RESULT_TYPE)
+	{
+		cout << "unmatch result type of login" << endl;
+		return false;
+	}
+
+	if(res.result != 0)
+	{
+		cout << "login failure" << endl;
+		return false;
+	}
+
+	cout << res.msg << endl;
 
 	return true;
 }
@@ -63,8 +109,8 @@ bool tcpConnect(ClientInfo *cli)
 	int n;
 	struct sockaddr_in servaddr;
 
-	cli->cliTcpFd = socket(AF_INET, SOCK_STREAM, 0);
-	if(cli->cliTcpFd < 0)
+	cli->tcpfd = socket(AF_INET, SOCK_STREAM, 0);
+	if(cli->tcpfd < 0)
 	{
 		cout << "TCP socket error" << endl;
 		return false;
@@ -83,7 +129,7 @@ bool tcpConnect(ClientInfo *cli)
 	}
 
 	//we can handle error type here
-	if(connect(cli->cliTcpFd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
+	if(connect(cli->tcpfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
 	{
 		cout << "TCP connect error" << endl;
 		return false;
@@ -96,8 +142,8 @@ bool udpConnect(ClientInfo *cli)
 {
 	int n;
 	struct sockaddr_in cliaddr, servaddr;
-	cli->cliUdpFd = socket(AF_INET, SOCK_DGRAM, 0);
-	if(cli->cliUdpFd < 0)
+	cli->udpfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if(cli->udpfd < 0)
 	{
 		cout << "UDP socket error" << endl;
 		return false;
@@ -115,18 +161,51 @@ bool udpConnect(ClientInfo *cli)
 		return false;
 	}
 
-	if(connect(cli->cliUdpFd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
+	if(connect(cli->udpfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
 	{
 		cout << "UDP connect error" << endl;
 		return false;
 	}
+
+	return true;
 }
 
 bool chat(ClientInfo *cli)
 {
+	int maxfd, n;
+	fd_set rset;
+	char buf[MAXLINE];
+
+	FD_ZERO(&rset);
 	while(1)
 	{
+		FD_SET(fileno(stdin), &rset);
+		FD_SET(cli->udpfd, &rset);
+		maxfd = max(fileno(stdin), cli->udpfd) + 1;
 
+		if(select(maxfd, &rset, NULL, NULL, NULL) < 0)
+		{
+			cout << "select error" << endl;
+			return false;
+		}
+
+		if(FD_ISSET(cli->udpfd, &rset)){
+			if( (n = Read(cli->udpfd, buf, MAXLINE, string("UDP"))) == 0){
+				cout << "server terminated" << endl;
+				return false;
+			}
+		}
+		Writen(fileno(stdout), buf, n, string("UDP"));
+
+		if(FD_ISSET(fileno(stdin), &rset)){
+			n = Read(fileno(stdin), buf, MAXLINE, string("Input UDP"));
+			if(n < 0)
+			{
+				cout << "Read input error" << endl;
+				return false;
+			}
+			Writen(cli->udpfd, buf, n, string("UDP"));
+		}
 	}
 	return true;
 }
