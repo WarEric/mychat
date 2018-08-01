@@ -140,12 +140,42 @@ bool tcpConnect(ClientInfo *cli)
 
 bool udpConnect(ClientInfo *cli)
 {
-	int n;
-	struct sockaddr_in cliaddr, servaddr;
 	cli->udpfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if(cli->udpfd < 0)
 	{
 		cout << "UDP socket error" << endl;
+		return false;
+	}
+
+	//get local tcp ipaddress and port, udp and tcp use the same ip and port
+	int n;
+	struct sockaddr_in cliaddr, servaddr;
+	socklen_t clilen = sizeof(cliaddr);
+
+	if(getsockname(cli->tcpfd, (struct sockaddr *)&cliaddr, &clilen) == -1)
+	{
+                cout << "tcpfd(" << cli->tcpfd << ") can't getsockname." << endl;
+		return false;
+	}
+	cli->cliaddr = string(inet_ntoa(cliaddr.sin_addr));
+	cli->cliport = ntohs(cliaddr.sin_port);
+
+	bzero(&cliaddr, sizeof(cliaddr));
+	cliaddr.sin_family = AF_INET;
+	cliaddr.sin_port = htons(cli->cliport);
+	n = inet_pton(AF_INET, cli->cliaddr.c_str(), &cliaddr.sin_addr);
+	if(n < 0){
+		cout << "convert presentation" << cli->cliaddr << "to numeric wrong" << endl;
+		return false;
+	}else if(n == 0){
+		cout << "invalid ip address: " << cli->cliaddr;
+		return false;
+	}
+
+	if(bind(cli->udpfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
+	{
+		cout << "udp bind " << cli->cliaddr << ":" << cli->cliport
+			<< "error" << endl;
 		return false;
 	}
 

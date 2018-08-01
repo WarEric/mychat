@@ -1,5 +1,6 @@
 #include<unistd.h>
 #include<iostream>
+#include<errno.h>
 #include"write.h"
 using std::cout;
 using std::endl;

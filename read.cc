@@ -1,5 +1,6 @@
 #include<iostream>
 #include<unistd.h>
+#include<errno.h>
 #include"read.h"
 
 using std::cout;

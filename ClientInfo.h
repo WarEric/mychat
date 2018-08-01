@@ -4,7 +4,6 @@
 using std::string;
 
 #define SERVPORT 5678
-#define CLIPORT 5678
 class ClientInfo{
 	public:
 		ClientInfo():servport(SERVPORT), udpfd(-1), tcpfd(-1){}

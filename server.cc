@@ -1,5 +1,7 @@
 #include<iostream>
+#include<map>
 #include<string.h>
+#include<stdio.h>
 #include<string>
 #include<cstdlib>
 #include<unistd.h>
@@ -19,6 +21,8 @@
 using std::cout;
 using std::endl;
 using std::string;
+using std::map;
+using std::make_pair;
 
 bool udpConnect(ClientInfo *cli)
 {
@@ -69,6 +73,8 @@ bool udpConnect(ClientInfo *cli)
 			<< cli->cliport << " error" << endl;
 		return false;
 	}
+
+	return true;
 }
 
 bool getClientInfo(ClientInfo *cli, int sockfd, char buff[], int64_t datalen)
@@ -114,7 +120,7 @@ bool getClientInfo(ClientInfo *cli, int sockfd, char buff[], int64_t datalen)
 	return true;
 }
 
-bool login(int sockfd, char buff[], int64_t datalen)
+bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udpfdcli, char buff[], int64_t datalen, fd_set *allset)
 {
 	ClientInfo cli;
 	if(getClientInfo(&cli, sockfd, buff, datalen) == false)
@@ -140,7 +146,7 @@ bool login(int sockfd, char buff[], int64_t datalen)
 	if(udpConnect(&cli) == false)
 	{
 		AuthResultPacket res;
-		res.result = 1;
+		res.result = 2;
 		res.msg = string("\nserver can't establish udp channel !!! \n");
 
 		char tempbuf[MAXLINE];
@@ -151,9 +157,12 @@ bool login(int sockfd, char buff[], int64_t datalen)
 		cout << "establish udp connection to " << cli.name << " fail" << endl;
 		return false;
 	}
-	
-	cout << cli.name << " join the chat." << endl;
 
+	FD_SET(cli.udpfd, allset);
+	udpfdcli.insert(make_pair(cli.udpfd, cli));
+	auto it = tcpfdcli.find(cli.tcpfd);
+	it->second = cli;
+	
 	AuthResultPacket res;
 	res.result = 0;
 	res.msg = string("\nWelcome join the chat !!! \n");
@@ -163,7 +172,32 @@ bool login(int sockfd, char buff[], int64_t datalen)
 	Writen(sockfd, &templen, sizeof(int64_t), string("TCP"));
 	Writen(sockfd, tempbuf, templen, string("TCP"));
 
+	cout << cli.name << " join the chat." << endl;
+
 	return true;
+}
+
+void chatall(int sockfd, map<int, ClientInfo> &udpfdcli, char buf[])
+{
+	cout << "char all" << endl;
+	int n;
+	char msg[MAXLINE];
+
+	auto speaker = udpfdcli.find(sockfd);
+	n = snprintf(msg, MAXLINE, "%s: %s", speaker->second.name.c_str(), buf);
+	if(n > MAXLINE)
+	{
+		cout << "snprintf wrong" << endl;
+		return;
+	}
+
+	for(auto it = udpfdcli.begin(), end = udpfdcli.end(); it != end; it++)
+	{
+		if(it == speaker)
+			continue;
+
+		Writen(it->second.udpfd, msg, n, string("UDP"));
+	}
 }
 
 int init_listen()
@@ -189,45 +223,43 @@ int init_listen()
 		cout << "TCP listenfd listen error" << endl;
 		exit(2);
 	}
+
+	cout << "Tcp listenning ......" << endl;
 	return listenfd;
 }
 
-int tcp_listen_event(int listenfd, fd_set *rset, fd_set *allset, int tcp[], int* tcp_maxi, int nready)
+int tcp_listen_event(int listenfd, map<int, ClientInfo> &tcpfdcli, fd_set *rset, fd_set *allset, int nready)
 {
 	int i, connfd;
-	socklen_t clilen;
-	struct sockaddr_in cliaddr;
 
 	if(FD_ISSET(listenfd, rset)){
-		clilen = sizeof(cliaddr);
-		connfd = accept(listenfd, (struct sockaddr *)&cliaddr, &clilen);
+		connfd = accept(listenfd, NULL, NULL);
 		if(connfd < 0){
 			cout << "accept error" << endl;
 			exit(3);
 		}
 
-		for(i = 0; i < FD_SETSIZE; i++)
-			if(tcp[i] < 0){
-				tcp[i] = connfd;
-				break;
-			}
+		/* wo should consider the biggest FD_SETSIZE
 		if(i == FD_SETSIZE){
 			cout << "too many clients" << endl;
 			exit(3);
 		}
+		*/
+
+		ClientInfo cli;
+		cli.tcpfd = connfd;
+		tcpfdcli.insert(make_pair(connfd, cli));
 
 		FD_SET(connfd, allset);
 
-		if(i > *tcp_maxi)
-			*tcp_maxi = i;
-
 		--nready;
+		cout << "a new tcp accept" << endl;
 	}
 
 	return nready;
 }
 
-int tcp_event(int tcp[], int maxi, fd_set *rset, fd_set *allset, int nready)
+int tcp_event(map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udpfdcli, fd_set *rset, fd_set *allset, int nready)
 {
 	int sockfd;
 	char buf[MAXLINE];
@@ -236,14 +268,15 @@ int tcp_event(int tcp[], int maxi, fd_set *rset, fd_set *allset, int nready)
 	int64_t datalen;
 	int size = sizeof(int64_t);
 
-	for(int i = 0; i <= maxi; i++){
-		if((sockfd = tcp[i]) < 0)
-			continue;
+	for(auto it = tcpfdcli.begin(), end = tcpfdcli.end(); it != end; it++){
+		sockfd = it->first;
 		if(FD_ISSET(sockfd, rset)){
 			if(Read(sockfd, &datalen, size, string("TCP")) != size){
 				close(sockfd);
 				FD_CLR(sockfd, allset);
-				tcp[i] = -1;
+
+				//clear tcp and udp if it exist, we need finish this later.
+				//clear();
 				cout << "some one left the chat !!!" << endl;
 			}else{
 				if(Read(sockfd, buf, datalen, string("TCP")) == datalen)
@@ -252,7 +285,7 @@ int tcp_event(int tcp[], int maxi, fd_set *rset, fd_set *allset, int nready)
 					switch(type)
 					{
 						case LOGIN_TYPE:
-							login(sockfd, buf, datalen);
+							login(sockfd, tcpfdcli, udpfdcli, buf, datalen, allset);
 							break;
 						default:
 							cout << "TCP unrecognised packet type" << endl;
@@ -261,7 +294,11 @@ int tcp_event(int tcp[], int maxi, fd_set *rset, fd_set *allset, int nready)
 				}else{
 					close(sockfd);
 					FD_CLR(sockfd, allset);
-					tcp[i] = -1;
+
+					//clear tcp and udp if it exist, we need finish this later.
+					//clear();
+					
+					cout << "some one left the chat !!!" << endl;
 				}
 			}
 
@@ -272,50 +309,78 @@ int tcp_event(int tcp[], int maxi, fd_set *rset, fd_set *allset, int nready)
 	return nready;
 }
 
-int maxfd(int tcpfd[], int tcp_maxi, int udpfd[], int udp_maxi)
+int udp_event(map<int, ClientInfo> &udpfdcli, fd_set *rset, fd_set *allset, int nready)
+{
+	int sockfd, n;
+	char buf[MAXLINE];
+
+	for(auto it = udpfdcli.begin(), end = udpfdcli.end(); it != end; it++){
+		sockfd = it->first;
+		if(FD_ISSET(sockfd, rset)){
+			n = Read(sockfd, buf, MAXLINE-1, string("TCP"));
+			if( n < 0 ){
+				cout << "udp read error !!!" << endl;
+			}else if(n == 0){
+				close(sockfd);
+				FD_CLR(sockfd, allset);
+
+				//clear udp, we need finish this later.
+				//clear();
+				cout << "some one left the chat !!!" << endl;
+			}else{
+				cout << "udp receive msg" << endl;
+				buf[n] = '\0';
+				chatall(sockfd, udpfdcli, buf);
+			}
+
+			if(--nready <= 0)
+				break;
+		}
+	}
+	return nready;
+}
+
+int maxfd(map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udpfdcli, int listenfd)
 {
 	int max = -1;
-	for(int i = 0; i < tcp_maxi; i++)
-	{
-		if(tcpfd[i] > max)
-			max = tcpfd[i];
-	}
 
-	for(int i = 0; i < udp_maxi; i++)
-	{
-		if(udpfd[i] > max)
-			max = udpfd[i];
-	}
-	return max;
+	map<int, ClientInfo>::reverse_iterator it = tcpfdcli.rbegin();
+	if(it != tcpfdcli.rend())
+		max = it->first;
+
+	it = udpfdcli.rbegin();
+	if(it != udpfdcli.rend())
+		max = it->first;
+
+	return max > listenfd ? max : listenfd;
 }
 
 int main(int argc, char *argv[])
 {
-	int tcp_maxi, udp_maxi, listenfd;
-	int nready, cliTcp[FD_SETSIZE], cliUdp[FD_SETSIZE];
+	map<int, ClientInfo> tcpfdcli;
+	map<int, ClientInfo> udpfdcli;
 
-	fd_set rset, allset;
-
+	int listenfd, nready;
 	listenfd = init_listen();
 
-	for(int i = 0; i < FD_SETSIZE; i++)
-	{
-		cliTcp[i] = -1;
-		cliUdp[i] = -1;
-	}
-	
-	tcp_maxi = -1;
-	udp_maxi = -1;
-
+	fd_set rset, allset;
 	FD_ZERO(&allset);
 	FD_SET(listenfd, &allset);
 	
 	while(1){
 		rset = allset;
-		nready = select(maxfd(cliTcp, tcp_maxi, cliUdp, udp_maxi)+1, &rset, NULL, NULL, NULL);
+		nready = select(maxfd(tcpfdcli, udpfdcli, listenfd)+1, &rset, NULL, NULL, NULL);
 
-		nready = tcp_listen_event(listenfd, &rset, &allset, cliTcp, &tcp_maxi, nready);
-		nready = tcp_event(cliTcp, tcp_maxi, &rset, &allset, nready);
+		if( (nready = tcp_listen_event(listenfd, tcpfdcli, &rset, &allset, nready)) <= 0)
+			continue;
+
+		if( (nready = tcp_event(tcpfdcli, udpfdcli, &rset, &allset, nready)) <= 0)
+			continue;
+
+		if( (nready = udp_event(udpfdcli, &rset, &allset, nready)) <= 0)
+			continue;
+
+		cout << "WARNING: not all nready fds have been proccessed." << endl;
 	}
 
 }

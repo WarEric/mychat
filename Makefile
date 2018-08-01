@@ -5,7 +5,7 @@ client: client.cc ClientInfo.h write.o read.o packet.o
 	${CC} -o client client.cc write.o read.o packet.o
 
 server: server.cc server.h ClientInfo.h write.o read.o packet.o
-	${CC} -o server server.cc write.o read.o packet.o
+	${CC} -std=c++11 -o server server.cc write.o read.o packet.o
 
 write.o: write.cc write.h
 	${CC} -c write.cc
