@@ -12,6 +12,7 @@
 #include<strings.h>
 #include<arpa/inet.h>
 #include<strings.h>
+#include<errno.h>
 #include"server.h"
 #include"packet.h"
 #include"write.h"
@@ -25,7 +26,7 @@ using std::string;
 using std::map;
 using std::make_pair;
 
-bool recordAddr(ClientInfo &cli, map<ClientAddr, string> addrcli)
+bool recordAddr(ClientInfo &cli, map<ClientAddr, string> &addrcli)
 {
 	ClientAddr addr;
 	addr.addr = cli.cliaddr;
@@ -118,7 +119,7 @@ bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &
 	return true;
 }
 
-void showAndbroadcast(int udpfd, ClientAddr addr, map<ClientAddr, string> addrcli, char msg[], int len)
+void showAndbroadcast(int udpfd, ClientAddr addr, map<ClientAddr, string> &addrcli, char msg[], int len)
 {
 	char buf[MAXLINE];
 	auto it = addrcli.find(addr);
@@ -141,6 +142,7 @@ void showAndbroadcast(int udpfd, ClientAddr addr, map<ClientAddr, string> addrcl
 
 	struct sockaddr_in cliaddr;
 	int clilen = sizeof(cliaddr);
+	int res;
 	for(auto iter = addrcli.begin(); iter != addrcli.end(); ++iter)
 	{
 		if(iter == it)
@@ -151,32 +153,39 @@ void showAndbroadcast(int udpfd, ClientAddr addr, map<ClientAddr, string> addrcl
 			cliaddr.sin_family = AF_INET;
 			cliaddr.sin_port = htons((iter->first).port);
 			inet_pton(AF_INET, (iter->first).addr.c_str(), &cliaddr.sin_addr);
-			sendto(udpfd, buf, n, 0, (struct sockaddr *)&cliaddr, len);
+			res = sendto(udpfd, buf, n, 0, (struct sockaddr *)&cliaddr, clilen);
+			if(res != n)
+			{
+				cout << "udp sendto error res = " << res << endl;
+				switch(errno){
+					case EBADF:
+						cout << "EBADF" << endl;
+						break;
+					case EFAULT:
+						cout << "EFAULT" << endl;
+						break;
+				//	case WNOTSOCK:
+				//		cout << "WNOSTOCK" << endl;
+				//		break;
+					case EINTR:
+						cout << "EINTR" << endl;
+						break;
+					case EAGAIN:
+						cout << "EAGAIN" << endl;
+						break;
+					case ENOBUFS:
+						cout << "ENOBUFS" << endl;
+						break;
+					case EINVAL:
+						cout << "EINVAL" << endl;
+						break;
+					default:
+						break;
+				}
+			}
 		}
 	}
 	
-}
-void chatall(int sockfd, map<int, ClientInfo> &udpfdcli, char buf[])
-{
-	cout << "char all" << endl;
-	int n;
-	char msg[MAXLINE];
-
-	auto speaker = udpfdcli.find(sockfd);
-	n = snprintf(msg, MAXLINE, "%s: %s", speaker->second.name.c_str(), buf);
-	if(n > MAXLINE)
-	{
-		cout << "snprintf wrong" << endl;
-		return;
-	}
-
-	for(auto it = udpfdcli.begin(), end = udpfdcli.end(); it != end; it++)
-	{
-		if(it == speaker)
-			continue;
-
-		Writen(it->second.udpfd, msg, n, string("UDP"));
-	}
 }
 
 int init_tcp_listen()
@@ -254,7 +263,6 @@ int tcp_listen_event(int listenfd, map<int, ClientInfo> &tcpfdcli, fd_set *rset,
 		FD_SET(connfd, allset);
 
 		--nready;
-		cout << "a new tcp accept" << endl;
 	}
 
 	return nready;
@@ -327,7 +335,7 @@ int udp_event(int sockfd, map<ClientAddr, string> &addrcli, fd_set rset, int nre
 		{
 			cout << "udp receive error" << endl;
 			continue;
-		}else if(n = 0)
+		}else if(n == 0)
 		{
 			break;
 		}

@@ -198,20 +198,20 @@ bool chat(ClientInfo *cli)
 		}
 
 		if(FD_ISSET(cli->udpfd, &rset)){
-			if( (n = Read(cli->udpfd, buf, MAXLINE, string("UDP"))) == 0){
+			if( (n = read(cli->udpfd, buf, MAXLINE)) == 0){
 				cout << "server terminated" << endl;
 				return false;
 			}
-			Writen(fileno(stdout), buf, n, string("UDP"));
+			write(fileno(stdout), buf, n);
 		}
 
 		if(FD_ISSET(fileno(stdin), &rset)){
-			if( (n = Read(fileno(stdin), buf, MAXLINE, string("Input UDP"))) < 0)
+			if( (n = read(fileno(stdin), buf, MAXLINE)) < 0)
 			{
 				cout << "Read input error" << endl;
 				return false;
 			}
-			Writen(cli->udpfd, buf, n, string("UDP"));
+			write(cli->udpfd, buf, n);
 		}
 	}
 	return true;
