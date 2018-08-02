@@ -11,10 +11,10 @@ class ClientInfo{
 
 		string name;
 		string passwd;
-		string cliaddr;
-		string servaddr;
-		int servport;
-		int cliport;
+		string cliaddr;		//udp 
+		string servaddr;	//udp and tcp
+		int servport;		//udp and tcp
+		int cliport;		//udp
 		int udpfd;
 		int tcpfd;
 };

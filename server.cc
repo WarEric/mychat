@@ -138,6 +138,8 @@ bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udp
 		return false;
 	}
 
+	/*
+
 	//check operation
 	//
 	//
@@ -162,6 +164,7 @@ bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udp
 	udpfdcli.insert(make_pair(cli.udpfd, cli));
 	auto it = tcpfdcli.find(cli.tcpfd);
 	it->second = cli;
+	*/
 	
 	AuthResultPacket res;
 	res.result = 0;
@@ -200,7 +203,7 @@ void chatall(int sockfd, map<int, ClientInfo> &udpfdcli, char buf[])
 	}
 }
 
-int init_listen()
+int init_tcp_listen()
 {
 	int listenfd;
 	struct sockaddr_in servaddr;
@@ -224,8 +227,30 @@ int init_listen()
 		exit(2);
 	}
 
-	cout << "Tcp listenning ......" << endl;
 	return listenfd;
+}
+
+int init_udp_bind()
+{
+	int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if(sockfd < 0)
+	{
+		cout << "udp socket error" << endl;
+		exit(3);
+	}
+
+	struct sockaddr_in servaddr;
+	bzero(&servaddr, sizeof(servaddr));
+	servaddr.sin_family = AF_INET;
+	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	servaddr.sin_port = htons(SERV_PORT);
+
+	if(bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
+	{
+		cout << "udp bind error" << endl;
+		exit(4);
+	}
+	return sockfd;
 }
 
 int tcp_listen_event(int listenfd, map<int, ClientInfo> &tcpfdcli, fd_set *rset, fd_set *allset, int nready)
@@ -358,14 +383,15 @@ int maxfd(map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udpfdcli, int li
 int main(int argc, char *argv[])
 {
 	map<int, ClientInfo> tcpfdcli;
-	map<int, ClientInfo> udpfdcli;
 
-	int listenfd, nready;
-	listenfd = init_listen();
+	int tcplistenfd, udplistenfd, nready;
+	tcplistenfd = init_listen();
+	udplistenfd = init_udp_bind();
 
 	fd_set rset, allset;
 	FD_ZERO(&allset);
-	FD_SET(listenfd, &allset);
+	FD_SET(tcplistenfd, &allset);
+	FD_SET(udplistenfd, &allset);
 	
 	while(1){
 		rset = allset;

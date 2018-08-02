@@ -57,27 +57,22 @@ void signalHandler(int signum)
 //this an easy solution, we can make it better in another time.
 bool login(ClientInfo *cli)
 {
-
-	string type("TCP");
-
 	cout << "login:";
 	cin >> cli->name;
 	cout << "passwd:";
 	cin >> cli->passwd;
 	char buff[MAXLINE];
 
-	LoginPacket pkt(cli->name, cli->passwd);
+	LoginPacket pkt(cli->name, cli->passwd, cli->cliaddr, cli->cliport);
 	int64_t datalen = encode_login_packet(pkt, buff, MAXLINE);
 
-	Writen(cli->tcpfd, &datalen, sizeof(int64_t), type);
-	Writen(cli->tcpfd, buff, datalen, type);
+	Writen(cli->tcpfd, &datalen, sizeof(int64_t), string("tcp"));
+	Writen(cli->tcpfd, buff, datalen, string("tcp"));
 
-	cout << "login successfully" << endl;
 
-	if(Read(cli->tcpfd, &datalen, sizeof(int64_t), string("TCP")) != sizeof(int64_t))
+	if(Read(cli->tcpfd, &datalen, sizeof(int64_t), string("tcp")) != sizeof(int64_t))
 		return false;
-
-	if(Read(cli->tcpfd, buff, datalen, string("TCP")) != datalen)
+	if(Read(cli->tcpfd, buff, datalen, string("tcp")) != datalen)
 		return false;
 
 	AuthResultPacket res;
@@ -99,6 +94,7 @@ bool login(ClientInfo *cli)
 		return false;
 	}
 
+	cout << "login successfully" << endl;
 	cout << res.msg << endl;
 
 	return true;
@@ -140,6 +136,7 @@ bool tcpConnect(ClientInfo *cli)
 
 bool udpConnect(ClientInfo *cli)
 {
+	int n;
 	cli->udpfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if(cli->udpfd < 0)
 	{
@@ -147,38 +144,7 @@ bool udpConnect(ClientInfo *cli)
 		return false;
 	}
 
-	//get local tcp ipaddress and port, udp and tcp use the same ip and port
-	int n;
-	struct sockaddr_in cliaddr, servaddr;
-	socklen_t clilen = sizeof(cliaddr);
-
-	if(getsockname(cli->tcpfd, (struct sockaddr *)&cliaddr, &clilen) == -1)
-	{
-                cout << "tcpfd(" << cli->tcpfd << ") can't getsockname." << endl;
-		return false;
-	}
-	cli->cliaddr = string(inet_ntoa(cliaddr.sin_addr));
-	cli->cliport = ntohs(cliaddr.sin_port);
-
-	bzero(&cliaddr, sizeof(cliaddr));
-	cliaddr.sin_family = AF_INET;
-	cliaddr.sin_port = htons(cli->cliport);
-	n = inet_pton(AF_INET, cli->cliaddr.c_str(), &cliaddr.sin_addr);
-	if(n < 0){
-		cout << "convert presentation" << cli->cliaddr << "to numeric wrong" << endl;
-		return false;
-	}else if(n == 0){
-		cout << "invalid ip address: " << cli->cliaddr;
-		return false;
-	}
-
-	if(bind(cli->udpfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
-	{
-		cout << "udp bind " << cli->cliaddr << ":" << cli->cliport
-			<< "error" << endl;
-		return false;
-	}
-
+	struct sockaddr_in servaddr;
 	bzero(&servaddr, sizeof(servaddr));
 	servaddr.sin_family = AF_INET;
 	servaddr.sin_port = htons(cli->servport);
@@ -197,6 +163,17 @@ bool udpConnect(ClientInfo *cli)
 		return false;
 	}
 
+	//get local udp ipaddress and port
+	struct sockaddr_in cliaddr;
+	socklen_t len = sizeof(cliaddr);
+	if(getsockname(cli->udpfd, (struct sockaddr *)&cliaddr, &len) == -1)
+	{
+                cout << "udpfd(" << cli->udpfd << ") can't getsockname." << endl;
+		return false;
+	}
+	cli->cliaddr = string(inet_ntoa(cliaddr.sin_addr));
+	cli->cliport = ntohs(cliaddr.sin_port);
+
 	return true;
 }
 
@@ -211,6 +188,7 @@ bool chat(ClientInfo *cli)
 	{
 		FD_SET(fileno(stdin), &rset);
 		FD_SET(cli->udpfd, &rset);
+		//we shoud consider tcpfd here later.
 		maxfd = max(fileno(stdin), cli->udpfd) + 1;
 
 		if(select(maxfd, &rset, NULL, NULL, NULL) < 0)
@@ -224,12 +202,11 @@ bool chat(ClientInfo *cli)
 				cout << "server terminated" << endl;
 				return false;
 			}
+			Writen(fileno(stdout), buf, n, string("UDP"));
 		}
-		Writen(fileno(stdout), buf, n, string("UDP"));
 
 		if(FD_ISSET(fileno(stdin), &rset)){
-			n = Read(fileno(stdin), buf, MAXLINE, string("Input UDP"));
-			if(n < 0)
+			if( (n = Read(fileno(stdin), buf, MAXLINE, string("Input UDP"))) < 0)
 			{
 				cout << "Read input error" << endl;
 				return false;
@@ -257,13 +234,13 @@ int main(int argc, char *argv[])
 	if(tcpConnect(cliInfo) == false)
 		exit(2);
 
-	if(login(cliInfo) == false)
+	if(udpConnect(cliInfo) == false)
 	{
 		closeTcp(cliInfo);
 		exit(3);
 	}
 
-	if(udpConnect(cliInfo) == false)
+	if(login(cliInfo) == false)
 	{
 		closeTcp(cliInfo);
 		exit(4);

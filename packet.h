@@ -10,13 +10,15 @@ using std::string;
 
 class LoginPacket{
 	public:
-		LoginPacket(const string &account, const string &passkey):
-       			type(LOGIN_TYPE), name(account), passwd(passkey){}
+		LoginPacket(const string &account, const string &passkey, const string &addr, uint32_t port):
+       			type(LOGIN_TYPE), name(account), passwd(passkey), cliaddr(addr), cliport(port){}
 		LoginPacket():type(LOGIN_TYPE){}
 
 		uint8_t type;
 		string name;
 		string passwd;
+		string cliaddr;
+		uint32_t cliport;
 };
 
 int64_t encode_login_packet(const LoginPacket &pkt, char buff[], size_t maxlen);

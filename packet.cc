@@ -46,6 +46,28 @@ int64_t encode_login_packet(const LoginPacket &pkt, char buff[], size_t maxlen)
 	if(len > maxlen)
 		return -1;
 
+
+	//encode cliaddr;
+	strlen = pkt.cliaddr.size()+1;// add \0
+	memcpy(ptr, &strlen, 1);
+	ptr += 1;
+	len += 1;
+	if(len > maxlen)
+		return -1;
+
+	memcpy(ptr, pkt.cliaddr.c_str(), strlen);
+	ptr += strlen;
+	len += strlen;
+	if(len > maxlen)
+		return -1;
+
+	//encode cliport
+	memcpy(ptr, &pkt.cliport, sizeof(uint32_t));
+	ptr += sizeof(uint32_t);
+	len += sizeof(uint32_t);
+	if(len > maxlen)
+		return -1;
+
 	return len;
 }
 
@@ -78,6 +100,20 @@ bool decode_login_packet(LoginPacket &pkt, char buff[])
 	memcpy(msg, ptr, len);
 	ptr += len;
 	pkt.passwd = string(msg);
+
+	//decode cliaddr
+	memcpy(&len, ptr, 1);
+	ptr += 1;
+	if(len > MAXLINE)
+		return false;
+
+	memcpy(msg, ptr, len);
+	ptr += len;
+	pkt.cliaddr = string(msg);
+
+	//decode cliport
+	memcpy(&pkt.cliport, ptr, sizeof(uint32_t));
+	ptr += sizeof(uint32_t);
 
 	return true;
 }
