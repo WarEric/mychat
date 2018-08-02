@@ -1,0 +1,6 @@
+#exe archive
+client
+server
+
+# Object files
+*.o
