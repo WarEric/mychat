@@ -6,10 +6,18 @@ using std::string;
 
 class ClientAddr{
 	public:
+		friend bool operator < (const ClientAddr &addr1, const ClientAddr &addr2);
+
+		ClientAddr(){}
+		ClientAddr(const ClientAddr &);
+		ClientAddr& operator=(const ClientAddr&);
+
 		bool operator==(const ClientAddr &orig);
 		bool operator!=(const ClientAddr &orig);
+		bool operator>(const ClientAddr &orig);
+		bool operator<(const ClientAddr &orig);
 
 		string addr;
-		uint32_t port;
+		uint16_t port;
 };
 #endif

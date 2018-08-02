@@ -17,6 +17,7 @@
 #include"write.h"
 #include"read.h"
 #include"ClientInfo.h"
+#include"ClientAddr.h"
 
 using std::cout;
 using std::endl;
@@ -24,60 +25,25 @@ using std::string;
 using std::map;
 using std::make_pair;
 
-bool udpConnect(ClientInfo *cli)
+bool recordAddr(ClientInfo &cli, map<ClientAddr, string> addrcli)
 {
-	int n;
-	struct sockaddr_in cliaddr, servaddr;
+	ClientAddr addr;
+	addr.addr = cli.cliaddr;
+	addr.port = cli.cliport;
 	
-	cli->udpfd = socket(AF_INET, SOCK_DGRAM, 0);
-	if(cli->udpfd < 0)
+	auto it = addrcli.find(addr);
+	if(it != addrcli.end())
 	{
-		cout << "UDP socket error" << endl;
+		cout  << " already recorded addrinfo " << addr.addr << ":" << addr.port 
+			<< " for " << it->second << endl;
 		return false;
 	}
 
-	bzero(&servaddr, sizeof(servaddr));
-	servaddr.sin_family = AF_INET;
-	servaddr.sin_port = htons(cli->servport);
-	n = inet_pton(AF_INET, cli->servaddr.c_str(), &servaddr.sin_addr);
-	if(n < 0){
-		cout << "convert presentation" << cli->servaddr << " to numeric wrong" << endl;
-		return false;
-	}else if(n == 0){
-		cout << "invalid ip address: " << cli->servaddr;
-		return false;
-	}
-
-	if(bind(cli->udpfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
-	{
-		cout << "udp bind " << cli->servaddr << ":" << cli->servport
-			<< " error" << endl;
-		return false;
-	}
-
-	bzero(&cliaddr, sizeof(servaddr));
-	cliaddr.sin_family = AF_INET;
-	cliaddr.sin_port = htons(cli->cliport);
-	n = inet_pton(AF_INET, cli->cliaddr.c_str(), &cliaddr.sin_addr);
-	if(n < 0){
-		cout << "convert presentation" << cli->cliaddr << " to numeric wrong" << endl;
-		return false;
-	}else if(n == 0){
-		cout << "invalid ip address: " << cli->cliaddr;
-		return false;
-	}
-
-	if(connect(cli->udpfd, (struct sockaddr *)&cliaddr, sizeof(cliaddr)) < 0)
-	{
-		cout << "udp connect " << cli->cliaddr << ":" 
-			<< cli->cliport << " error" << endl;
-		return false;
-	}
-
+	addrcli.insert(make_pair(addr, cli.name));
 	return true;
 }
 
-bool getClientInfo(ClientInfo *cli, int sockfd, char buff[], int64_t datalen)
+bool getClientInfo(ClientInfo &cli, int sockfd, char buff[], int64_t datalen)
 {
 	LoginPacket pkt;
 	if(decode_login_packet(pkt, buff) == false)
@@ -87,43 +53,19 @@ bool getClientInfo(ClientInfo *cli, int sockfd, char buff[], int64_t datalen)
 	}
 
 	//get account
-	cli->name = pkt.name;
-	cli->passwd = pkt.passwd;
-	cli->tcpfd = sockfd;
-
-	//getlocalinfo
-	struct sockaddr_in localaddr;
-	socklen_t locallen = sizeof(localaddr);
-
-	if(getsockname(sockfd, (struct sockaddr *)&localaddr, &locallen) == -1)
-	{
-		cout << "sockfd(" << sockfd << ") can't getsockname." << endl;
-		return false;
-	}
-
-	cli->servaddr = string(inet_ntoa(localaddr.sin_addr));
-	cli->servport = ntohs(localaddr.sin_port);
-
-	//getpeerinfo
-	struct sockaddr_in peeraddr;
-	socklen_t peerlen = sizeof(peeraddr);
-
-	if(getpeername(sockfd, (struct sockaddr *)&peeraddr, &peerlen) == -1)
-	{
-		cout << "sockfd(" << sockfd << ") can't getsockname." << endl;
-		return false;
-	}
-
-	cli->cliaddr = string(inet_ntoa(peeraddr.sin_addr));
-	cli->cliport = ntohs(peeraddr.sin_port);
+	cli.name = pkt.name;
+	cli.passwd = pkt.passwd;
+	cli.cliaddr = pkt.cliaddr;
+	cli.cliport = pkt.cliport;
+	cli.tcpfd = sockfd;
 
 	return true;
 }
 
-bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udpfdcli, char buff[], int64_t datalen, fd_set *allset)
+bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &addrcli, char buff[], int64_t datalen, fd_set *allset)
 {
 	ClientInfo cli;
-	if(getClientInfo(&cli, sockfd, buff, datalen) == false)
+	if(getClientInfo(cli, sockfd, buff, datalen) == false)
 	{
 		AuthResultPacket res;
 		res.result = 1;
@@ -138,14 +80,13 @@ bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udp
 		return false;
 	}
 
-	/*
-
-	//check operation
+	//check operation 
+	//including name, passwd, ip format etc.
 	//
 	//
 	//
 	
-	if(udpConnect(&cli) == false)
+	if(recordAddr(cli, addrcli) == false)
 	{
 		AuthResultPacket res;
 		res.result = 2;
@@ -160,11 +101,8 @@ bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udp
 		return false;
 	}
 
-	FD_SET(cli.udpfd, allset);
-	udpfdcli.insert(make_pair(cli.udpfd, cli));
 	auto it = tcpfdcli.find(cli.tcpfd);
 	it->second = cli;
-	*/
 	
 	AuthResultPacket res;
 	res.result = 0;
@@ -180,6 +118,44 @@ bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udp
 	return true;
 }
 
+void showAndbroadcast(int udpfd, ClientAddr addr, map<ClientAddr, string> addrcli, char msg[], int len)
+{
+	char buf[MAXLINE];
+	auto it = addrcli.find(addr);
+	if(it == addrcli.end())
+	{
+		cout << "an illegal ip address " << addr.addr << ":" << addr.port << " message :";
+		Writen(fileno(stdout), msg, len, string("udp"));
+		cout << "this message will be ignored." << endl;
+		return ;
+	}
+
+	msg[len] = '\0';
+	int n = snprintf(buf, MAXLINE, "%s:%s", it->second.c_str(), msg);
+	if(n > MAXLINE)
+	{
+		cout << it->second << "(" << addr.addr << ":" << addr.port << ")'s message is long than buffer, we will ignore it" << endl;
+		return ;
+	}
+
+
+	struct sockaddr_in cliaddr;
+	int clilen = sizeof(cliaddr);
+	for(auto iter = addrcli.begin(); iter != addrcli.end(); ++iter)
+	{
+		if(iter == it)
+		{
+			Writen(fileno(stdout), buf, n, string("show"));
+		}else{
+			bzero(&cliaddr, clilen);
+			cliaddr.sin_family = AF_INET;
+			cliaddr.sin_port = htons((iter->first).port);
+			inet_pton(AF_INET, (iter->first).addr.c_str(), &cliaddr.sin_addr);
+			sendto(udpfd, buf, n, 0, (struct sockaddr *)&cliaddr, len);
+		}
+	}
+	
+}
 void chatall(int sockfd, map<int, ClientInfo> &udpfdcli, char buf[])
 {
 	cout << "char all" << endl;
@@ -284,7 +260,7 @@ int tcp_listen_event(int listenfd, map<int, ClientInfo> &tcpfdcli, fd_set *rset,
 	return nready;
 }
 
-int tcp_event(map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udpfdcli, fd_set *rset, fd_set *allset, int nready)
+int tcp_event(map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &addrcli, fd_set *rset, fd_set *allset, int nready)
 {
 	int sockfd;
 	char buf[MAXLINE];
@@ -310,7 +286,7 @@ int tcp_event(map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udpfdcli, fd
 					switch(type)
 					{
 						case LOGIN_TYPE:
-							login(sockfd, tcpfdcli, udpfdcli, buf, datalen, allset);
+							login(sockfd, tcpfdcli, addrcli, buf, datalen, allset);
 							break;
 						default:
 							cout << "TCP unrecognised packet type" << endl;
@@ -334,58 +310,58 @@ int tcp_event(map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udpfdcli, fd
 	return nready;
 }
 
-int udp_event(map<int, ClientInfo> &udpfdcli, fd_set *rset, fd_set *allset, int nready)
+int udp_event(int sockfd, map<ClientAddr, string> &addrcli, fd_set rset, int nready)
 {
-	int sockfd, n;
+	int n;
+	socklen_t len;
 	char buf[MAXLINE];
 
-	for(auto it = udpfdcli.begin(), end = udpfdcli.end(); it != end; it++){
-		sockfd = it->first;
-		if(FD_ISSET(sockfd, rset)){
-			n = Read(sockfd, buf, MAXLINE-1, string("TCP"));
-			if( n < 0 ){
-				cout << "udp read error !!!" << endl;
-			}else if(n == 0){
-				close(sockfd);
-				FD_CLR(sockfd, allset);
+	if(!FD_ISSET(sockfd, &rset))
+		return nready;
 
-				//clear udp, we need finish this later.
-				//clear();
-				cout << "some one left the chat !!!" << endl;
-			}else{
-				cout << "udp receive msg" << endl;
-				buf[n] = '\0';
-				chatall(sockfd, udpfdcli, buf);
-			}
-
-			if(--nready <= 0)
-				break;
+	for(; nready > 0 ; nready--)
+	{
+		struct sockaddr_in cliaddr;
+		len = sizeof(cliaddr);
+		if( (n = recvfrom(sockfd, buf, MAXLINE, 0, (struct sockaddr *)&cliaddr, &len)) < 0)
+		{
+			cout << "udp receive error" << endl;
+			continue;
+		}else if(n = 0)
+		{
+			break;
 		}
+		
+		ClientAddr addr;
+		addr.addr = string(inet_ntoa(cliaddr.sin_addr));
+		addr.port = ntohs(cliaddr.sin_port);
+		showAndbroadcast(sockfd, addr, addrcli, buf, n);
 	}
+
 	return nready;
 }
 
-int maxfd(map<int, ClientInfo> &tcpfdcli, map<int, ClientInfo> &udpfdcli, int listenfd)
+int maxfd(int tcplistenfd,int udplistenfd, map<int, ClientInfo> &tcpfdcli)
 {
-	int max = -1;
+	int max = tcplistenfd > udplistenfd ? tcplistenfd : udplistenfd;
 
 	map<int, ClientInfo>::reverse_iterator it = tcpfdcli.rbegin();
 	if(it != tcpfdcli.rend())
+	{
+		if(it->first > max)
 		max = it->first;
+	}
 
-	it = udpfdcli.rbegin();
-	if(it != udpfdcli.rend())
-		max = it->first;
-
-	return max > listenfd ? max : listenfd;
+	return max;
 }
 
 int main(int argc, char *argv[])
 {
 	map<int, ClientInfo> tcpfdcli;
+	map<ClientAddr, string> addrcli;//addr to account name
 
 	int tcplistenfd, udplistenfd, nready;
-	tcplistenfd = init_listen();
+	tcplistenfd = init_tcp_listen();
 	udplistenfd = init_udp_bind();
 
 	fd_set rset, allset;
@@ -395,15 +371,15 @@ int main(int argc, char *argv[])
 	
 	while(1){
 		rset = allset;
-		nready = select(maxfd(tcpfdcli, udpfdcli, listenfd)+1, &rset, NULL, NULL, NULL);
+		nready = select(maxfd(tcplistenfd, udplistenfd, tcpfdcli)+1, &rset, NULL, NULL, NULL);
 
-		if( (nready = tcp_listen_event(listenfd, tcpfdcli, &rset, &allset, nready)) <= 0)
+		if( (nready = tcp_listen_event(tcplistenfd, tcpfdcli, &rset, &allset, nready)) <= 0)
 			continue;
 
-		if( (nready = tcp_event(tcpfdcli, udpfdcli, &rset, &allset, nready)) <= 0)
+		if( (nready = tcp_event(tcpfdcli, addrcli, &rset, &allset, nready)) <= 0)
 			continue;
 
-		if( (nready = udp_event(udpfdcli, &rset, &allset, nready)) <= 0)
+		if( (nready = udp_event(udplistenfd, addrcli, rset, nready)) <= 0)
 			continue;
 
 		cout << "WARNING: not all nready fds have been proccessed." << endl;
