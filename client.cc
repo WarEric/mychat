@@ -18,86 +18,57 @@ using std::cin;
 using std::endl;
 using std::string;
 
+bool tcpConnect(ClientInfo *cli);
+bool udpConnect(ClientInfo *cli);
+
+bool login(ClientInfo *cli);
+bool chat(ClientInfo *cli);
+
+bool closeTcp(ClientInfo *cli);
+bool closeUdp(ClientInfo *cli);
+
+void signalHandler(int signum);
+
+int max(int x, int y);
+
 ClientInfo *cliInfo;
-
-int max(int x, int y)
+int main(int argc, char *argv[])
 {
-	return x > y ? x : y ;
-}
-
-bool closeTcp(ClientInfo *cli)
-{
-	if(cli->tcpfd >= 0)
+	if(argc != 2)
 	{
-		close(cli->tcpfd);
-		cout << "Tcp socket closed" << endl;
+		cout << "input format is wrong, example like this:\n"
+			<< "./client <IPaddress>" << endl;
+		exit(1);
 	}
-	return true;
-}
+	
+	cliInfo = new ClientInfo();
+	cliInfo->servaddr = string(argv[1]);
 
-bool closeUdp(ClientInfo *cli)
-{
-	if(cliInfo->udpfd >= 0)
+	signal(SIGINT, signalHandler);
+
+	if(tcpConnect(cliInfo) == false)
+		exit(2);
+
+	if(udpConnect(cliInfo) == false)
 	{
-		close(cliInfo->udpfd);
-		cout << "Udp socket closed" << endl;
-	}
-	return true;
-}
-
-void signalHandler(int signum)
-{
-	cout << "\nwe will exit from this chat" << endl;
-	closeUdp(cliInfo);
-	closeTcp(cliInfo);
-	cout<< "exit success." << endl;
-	exit(0);
-}
-
-//this an easy solution, we can make it better in another time.
-bool login(ClientInfo *cli)
-{
-	cout << "login:";
-	cin >> cli->name;
-	cout << "passwd:";
-	cin >> cli->passwd;
-	char buff[MAXLINE];
-
-	LoginPacket pkt(cli->name, cli->passwd, cli->cliaddr, cli->cliport);
-	int64_t datalen = encode_login_packet(pkt, buff, MAXLINE);
-
-	Writen(cli->tcpfd, &datalen, sizeof(int64_t), string("tcp"));
-	Writen(cli->tcpfd, buff, datalen, string("tcp"));
-
-
-	if(Read(cli->tcpfd, &datalen, sizeof(int64_t), string("tcp")) != sizeof(int64_t))
-		return false;
-	if(Read(cli->tcpfd, buff, datalen, string("tcp")) != datalen)
-		return false;
-
-	AuthResultPacket res;
-	if(decode_auth_result_packet(res, buff) == false)
-	{
-		cout << "auth result decode error!" << endl;
-		return false;
+		closeTcp(cliInfo);
+		exit(3);
 	}
 
-	if(res.type != AUTH_RESULT_TYPE)
+	if(login(cliInfo) == false)
 	{
-		cout << "unmatch result type of login" << endl;
-		return false;
+		closeTcp(cliInfo);
+		exit(4);
 	}
 
-	if(res.result != 0)
+	if(chat(cliInfo) == false)
 	{
-		cout << "login failure" << endl;
-		return false;
+		closeUdp(cliInfo);
+		closeTcp(cliInfo);
+		exit(5);
 	}
 
-	cout << "login successfully" << endl;
-	cout << res.msg << endl;
-
-	return true;
+	return 0;
 }
 
 bool tcpConnect(ClientInfo *cli)
@@ -177,6 +148,52 @@ bool udpConnect(ClientInfo *cli)
 	return true;
 }
 
+//this an easy solution, we can make it better in another time.
+bool login(ClientInfo *cli)
+{
+	cout << "login:";
+	cin >> cli->name;
+	cout << "passwd:";
+	cin >> cli->passwd;
+	char buff[MAXLINE];
+
+	LoginPacket pkt(cli->name, cli->passwd, cli->cliaddr, cli->cliport);
+	int64_t datalen = encode_login_packet(pkt, buff, MAXLINE);
+
+	Writen(cli->tcpfd, &datalen, sizeof(int64_t), string("tcp"));
+	Writen(cli->tcpfd, buff, datalen, string("tcp"));
+
+
+	if(Read(cli->tcpfd, &datalen, sizeof(int64_t), string("tcp")) != sizeof(int64_t))
+		return false;
+	if(Read(cli->tcpfd, buff, datalen, string("tcp")) != datalen)
+		return false;
+
+	AuthResultPacket res;
+	if(decode_auth_result_packet(res, buff) == false)
+	{
+		cout << "auth result decode error!" << endl;
+		return false;
+	}
+
+	if(res.type != AUTH_RESULT_TYPE)
+	{
+		cout << "unmatch result type of login" << endl;
+		return false;
+	}
+
+	if(res.result != 0)
+	{
+		cout << "login failure" << endl;
+		return false;
+	}
+
+	cout << "login successfully" << endl;
+	cout << res.msg << endl;
+
+	return true;
+}
+
 bool chat(ClientInfo *cli)
 {
 	int maxfd, n;
@@ -217,41 +234,36 @@ bool chat(ClientInfo *cli)
 	return true;
 }
 
-int main(int argc, char *argv[])
+bool closeTcp(ClientInfo *cli)
 {
-	if(argc != 2)
+	if(cli->tcpfd >= 0)
 	{
-		cout << "input format is wrong, example like this:\n"
-			<< "./client <IPaddress>" << endl;
-		exit(1);
+		close(cli->tcpfd);
+		cout << "Tcp socket closed" << endl;
 	}
-	
-	cliInfo = new ClientInfo();
-	cliInfo->servaddr = string(argv[1]);
+	return true;
+}
 
-	signal(SIGINT, signalHandler);
-
-	if(tcpConnect(cliInfo) == false)
-		exit(2);
-
-	if(udpConnect(cliInfo) == false)
+bool closeUdp(ClientInfo *cli)
+{
+	if(cliInfo->udpfd >= 0)
 	{
-		closeTcp(cliInfo);
-		exit(3);
+		close(cliInfo->udpfd);
+		cout << "Udp socket closed" << endl;
 	}
+	return true;
+}
 
-	if(login(cliInfo) == false)
-	{
-		closeTcp(cliInfo);
-		exit(4);
-	}
+void signalHandler(int signum)
+{
+	cout << "\nwe will exit from this chat" << endl;
+	closeUdp(cliInfo);
+	closeTcp(cliInfo);
+	cout<< "exit success." << endl;
+	exit(0);
+}
 
-	if(chat(cliInfo) == false)
-	{
-		closeUdp(cliInfo);
-		closeTcp(cliInfo);
-		exit(5);
-	}
-
-	return 0;
+int max(int x, int y)
+{
+	return x > y ? x : y ;
 }
