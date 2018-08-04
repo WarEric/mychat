@@ -26,6 +26,52 @@ using std::string;
 using std::map;
 using std::make_pair;
 
+void notifyAll(int udpfd, map<ClientAddr, string> &addrcli, string msg)
+{
+	char buf[MAXLINE];
+	int n = snprintf(buf, MAXLINE, "%s", msg.c_str());
+	struct sockaddr_in cliaddr;
+	int clilen = sizeof(cliaddr);
+	int res;
+	for(auto iter = addrcli.begin(), end = addrcli.end(); iter != end; iter++)
+	{
+		bzero(&cliaddr, clilen);
+		cliaddr.sin_family = AF_INET;
+		cliaddr.sin_port = htons((iter->first).port);
+		inet_pton(AF_INET, (iter->first).addr.c_str(), &cliaddr.sin_addr);
+		res = sendto(udpfd, buf, n, 0, (struct sockaddr *)&cliaddr, clilen);
+		if(res != n)
+		{
+			cout << "udp sendto error res = " << res << endl;
+			switch(errno){
+				case EBADF:
+					cout << "EBADF" << endl;
+					break;
+				case EFAULT:
+					cout << "EFAULT" << endl;
+					break;
+			//	case WNOTSOCK:
+			//		cout << "WNOSTOCK" << endl;
+			//		break;
+				case EINTR:
+					cout << "EINTR" << endl;
+					break;
+				case EAGAIN:
+					cout << "EAGAIN" << endl;
+					break;
+				case ENOBUFS:
+					cout << "ENOBUFS" << endl;
+					break;
+				case EINVAL:
+					cout << "EINVAL" << endl;
+					break;
+				default:
+					break;
+			}
+		}
+	}
+}
+
 bool recordAddr(ClientInfo &cli, map<ClientAddr, string> &addrcli)
 {
 	ClientAddr addr;
@@ -63,10 +109,10 @@ bool getClientInfo(ClientInfo &cli, int sockfd, char buff[], int64_t datalen)
 	return true;
 }
 
-bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &addrcli, char buff[], int64_t datalen, fd_set *allset)
+bool login(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &addrcli, char buff[], int64_t datalen, fd_set *allset)
 {
 	ClientInfo cli;
-	if(getClientInfo(cli, sockfd, buff, datalen) == false)
+	if(getClientInfo(cli, tcpfd, buff, datalen) == false)
 	{
 		AuthResultPacket res;
 		res.result = 1;
@@ -74,8 +120,8 @@ bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &
 
 		char tempbuf[MAXLINE];
 		int64_t templen = encode_auth_result_packet(res, tempbuf, MAXLINE);
-		Writen(sockfd, &templen, sizeof(int64_t), string("TCP"));
-		Writen(sockfd, tempbuf, templen, string("TCP"));
+		Writen(tcpfd, &templen, sizeof(int64_t), string("TCP"));
+		Writen(tcpfd, tempbuf, templen, string("TCP"));
 
 		cout << "login get ClientInfo error." << endl;
 		return false;
@@ -87,6 +133,8 @@ bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &
 	//
 	//
 	
+	map<ClientAddr, string> notify = addrcli;
+
 	if(recordAddr(cli, addrcli) == false)
 	{
 		AuthResultPacket res;
@@ -95,8 +143,8 @@ bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &
 
 		char tempbuf[MAXLINE];
 		int64_t templen = encode_auth_result_packet(res, tempbuf, MAXLINE);
-		Writen(sockfd, &templen, sizeof(int64_t), string("TCP"));
-		Writen(sockfd, tempbuf, templen, string("TCP"));
+		Writen(tcpfd, &templen, sizeof(int64_t), string("TCP"));
+		Writen(tcpfd, tempbuf, templen, string("TCP"));
 		
 		cout << "establish udp connection to " << cli.name << " fail" << endl;
 		return false;
@@ -111,13 +159,14 @@ bool login(int sockfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &
 
 	char tempbuf[MAXLINE];
 	int64_t templen = encode_auth_result_packet(res, tempbuf, MAXLINE);
-	Writen(sockfd, &templen, sizeof(int64_t), string("TCP"));
-	Writen(sockfd, tempbuf, templen, string("TCP"));
+	Writen(tcpfd, &templen, sizeof(int64_t), string("TCP"));
+	Writen(tcpfd, tempbuf, templen, string("TCP"));
 
+	notifyAll(udpfd, notify, cli.name+" join the chat\n");
 	cout << cli.name << " join the chat." << endl;
-
 	return true;
 }
+
 
 void showAndbroadcast(int udpfd, ClientAddr addr, map<ClientAddr, string> &addrcli, char msg[], int len)
 {
@@ -132,7 +181,7 @@ void showAndbroadcast(int udpfd, ClientAddr addr, map<ClientAddr, string> &addrc
 	}
 
 	msg[len] = '\0';
-	int n = snprintf(buf, MAXLINE, "%s:%s", it->second.c_str(), msg);
+	int n = snprintf(buf, MAXLINE, "[%s]: %s", it->second.c_str(), msg);
 	if(n > MAXLINE)
 	{
 		cout << it->second << "(" << addr.addr << ":" << addr.port << ")'s message is long than buffer, we will ignore it" << endl;
@@ -186,6 +235,38 @@ void showAndbroadcast(int udpfd, ClientAddr addr, map<ClientAddr, string> &addrc
 		}
 	}
 	
+}
+
+//We won't notify the connection's leaving to all clients unless the connection had recorded it name on server.
+//If a tcp connection don't successfully record it's name and udp address info (maybe it is refused by server 
+//authention or it get network errors), we needn't to let clients know it's left because it never joined the chat.
+bool clear_connect_notify_all(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &addrcli)
+{
+	auto iter = tcpfdcli.find(tcpfd);
+	ClientAddr addr;
+	addr.addr = (iter->second).cliaddr;
+	addr.port = (iter->second).cliport;
+	string name = (iter->second).name;
+
+	auto it = addrcli.find(addr);
+	if(it != addrcli.end())
+		addrcli.erase(it);
+
+	if(!name.empty())
+	{
+		string msg = name;
+		msg.append(" left the chat\n");
+		notifyAll(udpfd, addrcli, msg);
+	}
+
+	tcpfdcli.erase(iter);
+	if(close(tcpfd) < 0)
+	{
+		cout << "close " << name << "tcpfd(" << tcpfd <<") error" << endl;
+		return false;
+	}
+	cout << name << "(udp--" << addr.addr << ":" << addr.port << ") left the chat" << endl;
+	return true;
 }
 
 int init_tcp_listen()
@@ -268,7 +349,7 @@ int tcp_listen_event(int listenfd, map<int, ClientInfo> &tcpfdcli, fd_set *rset,
 	return nready;
 }
 
-int tcp_event(map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &addrcli, fd_set *rset, fd_set *allset, int nready)
+int tcp_event(int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &addrcli, fd_set *rset, fd_set *allset, int nready)
 {
 	int sockfd;
 	char buf[MAXLINE];
@@ -281,12 +362,8 @@ int tcp_event(map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &addrcli, 
 		sockfd = it->first;
 		if(FD_ISSET(sockfd, rset)){
 			if(Read(sockfd, &datalen, size, string("TCP")) != size){
-				close(sockfd);
+				clear_connect_notify_all(sockfd, udpfd, tcpfdcli, addrcli);
 				FD_CLR(sockfd, allset);
-
-				//clear tcp and udp if it exist, we need finish this later.
-				//clear();
-				cout << "some one left the chat !!!" << endl;
 			}else{
 				if(Read(sockfd, buf, datalen, string("TCP")) == datalen)
 				{
@@ -294,20 +371,15 @@ int tcp_event(map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &addrcli, 
 					switch(type)
 					{
 						case LOGIN_TYPE:
-							login(sockfd, tcpfdcli, addrcli, buf, datalen, allset);
+							login(sockfd, udpfd, tcpfdcli, addrcli, buf, datalen, allset);
 							break;
 						default:
 							cout << "TCP unrecognised packet type" << endl;
 							break;
 					}
 				}else{
-					close(sockfd);
+					clear_connect_notify_all(sockfd, udpfd, tcpfdcli, addrcli);
 					FD_CLR(sockfd, allset);
-
-					//clear tcp and udp if it exist, we need finish this later.
-					//clear();
-					
-					cout << "some one left the chat !!!" << endl;
 				}
 			}
 
@@ -384,7 +456,7 @@ int main(int argc, char *argv[])
 		if( (nready = tcp_listen_event(tcplistenfd, tcpfdcli, &rset, &allset, nready)) <= 0)
 			continue;
 
-		if( (nready = tcp_event(tcpfdcli, addrcli, &rset, &allset, nready)) <= 0)
+		if( (nready = tcp_event(udplistenfd, tcpfdcli, addrcli, &rset, &allset, nready)) <= 0)
 			continue;
 
 		if( (nready = udp_event(udplistenfd, addrcli, rset, nready)) <= 0)
