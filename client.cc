@@ -200,13 +200,16 @@ bool chat(ClientInfo *cli)
 	fd_set rset;
 	char buf[MAXLINE];
 
-	FD_ZERO(&rset);
 	while(1)
 	{
+
+		FD_ZERO(&rset);
 		FD_SET(fileno(stdin), &rset);
 		FD_SET(cli->udpfd, &rset);
-		//we shoud consider tcpfd here later.
-		maxfd = max(fileno(stdin), cli->udpfd) + 1;
+		FD_SET(cli->tcpfd, &rset);
+
+		maxfd = max(cli->tcpfd, cli->udpfd) + 1;
+		maxfd = max(maxfd, fileno(stdin));
 
 		if(select(maxfd, &rset, NULL, NULL, NULL) < 0)
 		{
@@ -229,6 +232,21 @@ bool chat(ClientInfo *cli)
 				return false;
 			}
 			write(cli->udpfd, buf, n);
+		}
+
+		if(FD_ISSET(cli->tcpfd, &rset)){
+			if((n = read(cli->tcpfd, buf, MAXLINE)) <= 0)
+			{
+				if(n == 0)
+				{
+					cout << "remote server tcp connection shutdown, we will exit now" << endl;
+					return false;
+				}
+				else{
+					cout << "read tcp error" << endl;
+					return false;
+				}
+			}
 		}
 	}
 	return true;

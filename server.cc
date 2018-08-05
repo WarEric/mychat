@@ -12,6 +12,7 @@
 #include<strings.h>
 #include<arpa/inet.h>
 #include<strings.h>
+#include<signal.h>
 #include<errno.h>
 #include"server.h"
 #include"packet.h"
@@ -41,17 +42,20 @@ void showAndbroadcast(int udpfd, ClientAddr addr, map<ClientAddr, string> &addrc
 int init_tcp_listen();
 int init_udp_bind();
 
+void signalHandler(int signum);
 int maxfd(int tcplistenfd,int udplistenfd, map<int, ClientInfo> &tcpfdcli);
 
+int tcplistenfd = -1, udplistenfd = -1;
+map<int, ClientInfo> tcpfdcli;
+map<ClientAddr, string> addrcli;//addr to account name
 
 int main(int argc, char *argv[])
 {
-	map<int, ClientInfo> tcpfdcli;
-	map<ClientAddr, string> addrcli;//addr to account name
-
-	int tcplistenfd, udplistenfd, nready;
+	int nready;
 	tcplistenfd = init_tcp_listen();
 	udplistenfd = init_udp_bind();
+
+	signal(SIGINT, signalHandler);
 
 	fd_set rset, allset;
 	FD_ZERO(&allset);
@@ -469,6 +473,31 @@ int init_udp_bind()
 		exit(4);
 	}
 	return sockfd;
+}
+
+void signalHandler(int signum)
+{
+	cout << "\n\nthe server will shutdown now" << endl;
+	cout << "notifying all clents..." << endl;
+	notifyAll(udplistenfd, addrcli, string("\n\n      Attention Please:\n      The Server Will Shutdown Now !!!\n\n"));
+
+	cout << "close tcplistenfd..." << endl;
+	if(close(tcplistenfd) < 0)
+		cout << "close tcplistenfd(" << tcplistenfd << ") error" << endl;
+
+	cout << "close udplistenfd..." << endl;
+	if(close(udplistenfd) < 0)
+		cout << "close udplistenfd(" << udplistenfd << ") error" << endl;
+	
+	cout << "closing all eastablished tcp connection..." << endl;
+	for(auto iter = tcpfdcli.begin(), end = tcpfdcli.end(); iter != end; iter++)
+	{
+		if(close(iter->first) < 0)
+			cout << "close " << (iter->second).name << " tcp connection fd("
+			       	<< iter->first << ") error" << endl; 
+	}
+
+	exit(0);
 }
 
 int maxfd(int tcplistenfd,int udplistenfd, map<int, ClientInfo> &tcpfdcli)
