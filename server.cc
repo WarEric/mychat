@@ -428,6 +428,7 @@ void showAndbroadcast(int udpfd, ClientAddr addr, map<ClientAddr, string> &addrc
 int init_tcp_listen()
 {
 	int listenfd;
+	const int on = 1;
 	struct sockaddr_in servaddr;
 
 	listenfd = socket(AF_INET, SOCK_STREAM, 0);
@@ -437,16 +438,22 @@ int init_tcp_listen()
 	servaddr.sin_addr.s_addr = htonl(INADDR_ANY);
 	servaddr.sin_port = htons(SERV_PORT);
 
+	if(setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0)
+	{
+		cout << "tcplistenfd setsockopt SO_REUSEADDR error" << endl;
+		exit(1);
+	}
+
 	if(bind(listenfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
 	{
 		cout << "TCP listenfd bind error" << endl;
-		exit(1);
+		exit(2);
 	}
 
 	if(listen(listenfd, LISTENQ) < 0)
 	{
 		cout << "TCP listenfd listen error" << endl;
-		exit(2);
+		exit(3);
 	}
 
 	return listenfd;
@@ -458,7 +465,7 @@ int init_udp_bind()
 	if(sockfd < 0)
 	{
 		cout << "udp socket error" << endl;
-		exit(3);
+		exit(4);
 	}
 
 	struct sockaddr_in servaddr;
@@ -470,7 +477,7 @@ int init_udp_bind()
 	if(bind(sockfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
 	{
 		cout << "udp bind error" << endl;
-		exit(4);
+		exit(5);
 	}
 	return sockfd;
 }
