@@ -22,6 +22,7 @@ bool tcpConnect(ClientInfo *cli);
 bool udpConnect(ClientInfo *cli);
 
 bool login(ClientInfo *cli);
+bool inputPassword(string &str);
 bool chat(ClientInfo *cli);
 
 bool closeTcp(ClientInfo *cli);
@@ -151,10 +152,11 @@ bool udpConnect(ClientInfo *cli)
 //this an easy solution, we can make it better in another time.
 bool login(ClientInfo *cli)
 {
-	cout << "login:";
-	cin >> cli->name;
-	cout << "passwd:";
-	cin >> cli->passwd;
+	do{
+		cout << "login:";
+		cin >> cli->name;
+	}while(inputPassword(cli->passwd) != true);
+
 	char buff[MAXLINE];
 
 	LoginPacket pkt(cli->name, cli->passwd, cli->cliaddr, cli->cliport);
@@ -192,6 +194,18 @@ bool login(ClientInfo *cli)
 	cout << res.msg << endl;
 
 	return true;
+}
+
+//This is not the best way. System man recommend termios as a better way
+bool inputPassword(string &str)
+{
+	char *passwd = getpass("passwd:");
+	str = string(passwd);
+
+	if(str.empty())
+		return false;
+	else
+		return true;
 }
 
 bool chat(ClientInfo *cli)
