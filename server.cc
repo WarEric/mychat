@@ -211,7 +211,7 @@ bool clear_connect_notify_all(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdc
 void notifyAll(int udpfd, map<ClientAddr, string> &addrcli, string msg)
 {
 	char buf[MAXLINE];
-	int n = snprintf(buf, MAXLINE, "%s", msg.c_str());
+	int n = snprintf(buf, MAXLINE, "\033[31m%s\033[0m", msg.c_str());
 	struct sockaddr_in cliaddr;
 	int clilen = sizeof(cliaddr);
 	int res;
@@ -369,7 +369,7 @@ void showAndbroadcast(int udpfd, ClientAddr addr, map<ClientAddr, string> &addrc
 	}
 
 	msg[len] = '\0';
-	int n = snprintf(buf, MAXLINE, "[%s]: %s", it->second.c_str(), msg);
+	int n = snprintf(buf, MAXLINE, "\033[34m[%s]:\033[0m \033[1m%s\033[0m", it->second.c_str(), msg);
 	if(n > MAXLINE)
 	{
 		cout << it->second << "(" << addr.addr << ":" << addr.port << ")'s message is long than buffer, we will ignore it" << endl;
@@ -486,7 +486,7 @@ void signalHandler(int signum)
 {
 	cout << "\n\nthe server will shutdown now" << endl;
 	cout << "notifying all clents..." << endl;
-	notifyAll(udplistenfd, addrcli, string("\n\n      Attention Please:\n      The Server Will Shutdown Now !!!\n\n"));
+	notifyAll(udplistenfd, addrcli, string("\n\n       Attention Please:\nThe Server Will Shutdown Now !!!\n\n"));
 
 	cout << "close tcplistenfd..." << endl;
 	if(close(tcplistenfd) < 0)
