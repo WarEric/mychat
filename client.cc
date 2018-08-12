@@ -190,13 +190,13 @@ bool login(ClientInfo *cli)
 		if(res.result == 0)
 			break;
 
-		cout << "login failure" << endl;
+		cout << "login failure." << endl;
 		cout << res.msg << endl;
 	}
 	if(count == 5)
 		return false;
 
-	cout << "login successfully" << endl;
+	cout << "login successfully." << endl;
 	cout << res.msg << endl;
 
 	return true;

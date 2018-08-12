@@ -111,13 +111,13 @@ bool login(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr,
 		res.result = result;
 		switch(result){
 			case AUTH_RESULT_ERROR_LOGGEDIN:
-				res.msg = string("\nthis user already has logged in !!!\nyou can't log repeatedly.\n");
+				res.msg = string("this user already has logged in !!!\nyou can't log repeatedly.");
 				break;
 			case AUTH_RESULT_ERROR_UNREGISTER:
-				res.msg = string("\nthis user doesn't register his or her name and passwd in the server.\n");
+				res.msg = string("this user doesn't register his or her name and passwd in the server.");
 				break;
 			case AUTH_RESULT_ERROR_WPASSWD:
-				res.msg = string("\nwrong passwd, please try again.\n");
+				res.msg = string("wrong passwd, please try again.");
 				break;
 		}
 
@@ -137,7 +137,7 @@ bool login(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr,
 	{
 		AuthResultPacket res;
 		res.result = AUTH_RESULT_ERROR_UDPCON;
-		res.msg = string("\nserver can't establish udp channel !!! \n");
+		res.msg = string("server can't establish udp channel !!!");
 
 		char tempbuf[MAXLINE];
 		int64_t templen = encode_auth_result_packet(res, tempbuf, MAXLINE);
