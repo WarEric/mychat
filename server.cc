@@ -1,6 +1,7 @@
 #include<iostream>
 #include<map>
 #include<string.h>
+#include<set>
 #include<stdio.h>
 #include<string>
 #include<cstdlib>
@@ -20,14 +21,17 @@
 #include"read.h"
 #include"ClientInfo.h"
 #include"ClientAddr.h"
+#include"GetShadow.h"
 
 using std::cout;
 using std::endl;
 using std::string;
+using std::set;
 using std::map;
 using std::make_pair;
 
 bool login(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &addrcli, char buff[], int64_t datalen, fd_set *allset);
+int authCheck(ClientInfo *cli);
 bool getClientInfo(ClientInfo &cli, int sockfd, char buff[], int64_t datalen);
 bool recordAddr(ClientInfo &cli, map<ClientAddr, string> &addrcli);
 
@@ -47,7 +51,9 @@ int maxfd(int tcplistenfd,int udplistenfd, map<int, ClientInfo> &tcpfdcli);
 
 int tcplistenfd = -1, udplistenfd = -1;
 map<int, ClientInfo> tcpfdcli;
-map<ClientAddr, string> addrcli;//addr to account name
+map<ClientAddr, string> addrcli;		//addr to account name.
+set<string> loggedIn;				//clients which are logged.
+string shadowsfile;				//password shadows file position.
 
 int main(int argc, char *argv[])
 {
@@ -86,7 +92,7 @@ bool login(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr,
 	if(getClientInfo(cli, tcpfd, buff, datalen) == false)
 	{
 		AuthResultPacket res;
-		res.result = 1;
+		res.result = AUTH_RESULT_ERROR_GETINFO;
 		res.msg = string("\nserver can't get ClientInfo !!! \n");
 
 		char tempbuf[MAXLINE];
@@ -98,18 +104,39 @@ bool login(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr,
 		return false;
 	}
 
-	//check operation 
-	//including name, passwd, ip format etc.
-	//
-	//
-	//
+	int result;
+	if( (result = authCheck(&cli)) != 0)
+	{
+		AuthResultPacket res;
+		res.result = result;
+		switch(result){
+			case AUTH_RESULT_ERROR_LOGGEDIN:
+				res.msg = string("\nthis user already has logged in !!!\nyou can't log repeatedly.\n");
+				break;
+			case AUTH_RESULT_ERROR_UNREGISTER:
+				res.msg = string("\nthis user doesn't register his or her name and passwd in the server.\n");
+				break;
+			case AUTH_RESULT_ERROR_WPASSWD:
+				res.msg = string("\nwrong passwd, please try again.\n");
+				break;
+		}
+
+		char tempbuf[MAXLINE];
+		int64_t templen = encode_auth_result_packet(res, tempbuf, MAXLINE);
+		Writen(tcpfd, &templen, sizeof(int64_t), string("TCP"));
+		Writen(tcpfd, tempbuf, templen, string("TCP"));
+		
+		cout << cli.name << " authentic check fail" << endl;
+		return false;
+	}
+	
 	
 	map<ClientAddr, string> notify = addrcli;
 
 	if(recordAddr(cli, addrcli) == false)
 	{
 		AuthResultPacket res;
-		res.result = 2;
+		res.result = AUTH_RESULT_ERROR_UDPCON;
 		res.msg = string("\nserver can't establish udp channel !!! \n");
 
 		char tempbuf[MAXLINE];
@@ -125,7 +152,7 @@ bool login(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr,
 	it->second = cli;
 	
 	AuthResultPacket res;
-	res.result = 0;
+	res.result = AUTH_RESULT_PASSED;
 	res.msg = string("\nWelcome join the chat !!! \n");
 
 	char tempbuf[MAXLINE];
@@ -136,6 +163,32 @@ bool login(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr,
 	notifyAll(udpfd, notify, cli.name+" join the chat\n");
 	cout << cli.name << " join the chat." << endl;
 	return true;
+}
+
+// authentic check
+int authCheck(ClientInfo *cli)
+{
+	//we should consider ip or other things later.
+	static map<string, string> shadows;
+
+	if(shadowsfile.empty())
+		shadowsfile = string("shadows");
+
+	auto it = loggedIn.find(cli->name);
+	if(it != loggedIn.end())
+		return AUTH_RESULT_ERROR_LOGGEDIN;
+
+	auto iter = shadows.find(cli->name);
+	if(iter == shadows.end())
+		ReadConfig(shadowsfile, shadows);
+	if((iter = shadows.find(cli->name)) == shadows.end())
+		return AUTH_RESULT_ERROR_UNREGISTER;
+
+	if(iter->second != cli->passwd)
+		return AUTH_RESULT_ERROR_WPASSWD;
+
+	loggedIn.insert(cli->name);
+	return AUTH_RESULT_PASSED;
 }
 
 bool getClientInfo(ClientInfo &cli, int sockfd, char buff[], int64_t datalen)

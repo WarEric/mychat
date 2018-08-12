@@ -6,6 +6,13 @@
 #define LOGIN_TYPE 1
 #define AUTH_RESULT_TYPE 2
 
+#define AUTH_RESULT_PASSED			0	// The user passed the verification.
+#define AUTH_RESULT_ERROR_LOGGEDIN		1	// The user already has logged in.
+#define AUTH_RESULT_ERROR_UNREGISTER		2	// This user has not registered
+#define AUTH_RESULT_ERROR_WPASSWD		3	// Wrong passwd.
+#define AUTH_RESULT_ERROR_UDPCON		4	// Server can't establish udp connection.
+#define AUTH_RESULT_ERROR_GETINFO		5	// Server can't get clientinfo.
+
 using std::string;
 
 class LoginPacket{

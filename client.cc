@@ -152,43 +152,49 @@ bool udpConnect(ClientInfo *cli)
 //this an easy solution, we can make it better in another time.
 bool login(ClientInfo *cli)
 {
-	do{
-		cout << "login:";
-		cin >> cli->name;
-	}while(inputPassword(cli->passwd) != true);
-
-	char buff[MAXLINE];
-
-	LoginPacket pkt(cli->name, cli->passwd, cli->cliaddr, cli->cliport);
-	int64_t datalen = encode_login_packet(pkt, buff, MAXLINE);
-
-	Writen(cli->tcpfd, &datalen, sizeof(int64_t), string("tcp"));
-	Writen(cli->tcpfd, buff, datalen, string("tcp"));
-
-
-	if(Read(cli->tcpfd, &datalen, sizeof(int64_t), string("tcp")) != sizeof(int64_t))
-		return false;
-	if(Read(cli->tcpfd, buff, datalen, string("tcp")) != datalen)
-		return false;
-
 	AuthResultPacket res;
-	if(decode_auth_result_packet(res, buff) == false)
+	int count;
+	for(int count = 0; count < 5; count++)
 	{
-		cout << "auth result decode error!" << endl;
-		return false;
-	}
+		do{
+			cout << "login:";
+			cin >> cli->name;
+		}while(inputPassword(cli->passwd) != true);
 
-	if(res.type != AUTH_RESULT_TYPE)
-	{
-		cout << "unmatch result type of login" << endl;
-		return false;
-	}
+		char buff[MAXLINE];
 
-	if(res.result != 0)
-	{
+		LoginPacket pkt(cli->name, cli->passwd, cli->cliaddr, cli->cliport);
+		int64_t datalen = encode_login_packet(pkt, buff, MAXLINE);
+
+		Writen(cli->tcpfd, &datalen, sizeof(int64_t), string("tcp"));
+		Writen(cli->tcpfd, buff, datalen, string("tcp"));
+
+
+		if(Read(cli->tcpfd, &datalen, sizeof(int64_t), string("tcp")) != sizeof(int64_t))
+			return false;
+		if(Read(cli->tcpfd, buff, datalen, string("tcp")) != datalen)
+			return false;
+
+		if(decode_auth_result_packet(res, buff) == false)
+		{
+			cout << "auth result decode error!" << endl;
+			return false;
+		}
+
+		if(res.type != AUTH_RESULT_TYPE)
+		{
+			cout << "unmatch result type of login" << endl;
+			return false;
+		}
+
+		if(res.result == 0)
+			break;
+
 		cout << "login failure" << endl;
-		return false;
+		cout << res.msg << endl;
 	}
+	if(count == 5)
+		return false;
 
 	cout << "login successfully" << endl;
 	cout << res.msg << endl;
