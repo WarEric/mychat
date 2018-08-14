@@ -22,6 +22,7 @@
 #include"ClientInfo.h"
 #include"ClientAddr.h"
 #include"GetShadow.h"
+#include"Paint.h"
 
 using std::cout;
 using std::endl;
@@ -36,7 +37,7 @@ bool getClientInfo(ClientInfo &cli, int sockfd, char buff[], int64_t datalen);
 bool recordAddr(ClientInfo &cli, map<ClientAddr, string> &addrcli);
 
 bool clear_connect_notify_all(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &addrcli);
-void notifyAll(int udpfd, map<ClientAddr, string> &addrcli, string msg);
+void notifyAll(int udpfd, map<ClientAddr, string> &addrcli, string msg, enum color clr);
 
 int tcp_listen_event(int listenfd, map<int, ClientInfo> &tcpfdcli, fd_set *rset, fd_set *allset, int nready);
 int tcp_event(int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr, string> &addrcli, fd_set *rset, fd_set *allset, int nready);
@@ -107,17 +108,18 @@ bool login(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr,
 	int result;
 	if( (result = authCheck(&cli)) != 0)
 	{
+		Paint pt(color::yellow);
 		AuthResultPacket res;
 		res.result = result;
 		switch(result){
 			case AUTH_RESULT_ERROR_LOGGEDIN:
-				res.msg = string("this user already has logged in !!!\nyou can't log repeatedly.");
+				res.msg = pt.paint("this user already has logged in !!!\nyou can't log repeatedly.");
 				break;
 			case AUTH_RESULT_ERROR_UNREGISTER:
-				res.msg = string("this user doesn't register his or her name and passwd in the server.");
+				res.msg = pt.paint("this user doesn't register his or her name and passwd in the server.");
 				break;
 			case AUTH_RESULT_ERROR_WPASSWD:
-				res.msg = string("wrong passwd, please try again.");
+				res.msg = pt.paint("wrong passwd, please try again.");
 				break;
 		}
 
@@ -160,7 +162,7 @@ bool login(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdcli, map<ClientAddr,
 	Writen(tcpfd, &templen, sizeof(int64_t), string("TCP"));
 	Writen(tcpfd, tempbuf, templen, string("TCP"));
 
-	notifyAll(udpfd, notify, cli.name+" join the chat\n");
+	notifyAll(udpfd, notify, cli.name+" join the chat\n", color::yellow);
 	cout << cli.name << " join the chat." << endl;
 	return true;
 }
@@ -246,9 +248,11 @@ bool clear_connect_notify_all(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdc
 
 	if(!name.empty())
 	{
+		loggedIn.erase(name);
+
 		string msg = name;
 		msg.append(" left the chat\n");
-		notifyAll(udpfd, addrcli, msg);
+		notifyAll(udpfd, addrcli, msg, color::yellow);
 	}
 
 	tcpfdcli.erase(iter);
@@ -261,10 +265,13 @@ bool clear_connect_notify_all(int tcpfd, int udpfd, map<int, ClientInfo> &tcpfdc
 	return true;
 }
 
-void notifyAll(int udpfd, map<ClientAddr, string> &addrcli, string msg)
+void notifyAll(int udpfd, map<ClientAddr, string> &addrcli, string msg, enum color clr)
 {
+	Paint painter(clr);
+	string notemsg = painter.paint(msg);
+
 	char buf[MAXLINE];
-	int n = snprintf(buf, MAXLINE, "\033[31m%s\033[0m", msg.c_str());
+	int n = snprintf(buf, MAXLINE, "%s", notemsg.c_str());
 	struct sockaddr_in cliaddr;
 	int clilen = sizeof(cliaddr);
 	int res;
@@ -415,14 +422,18 @@ void showAndbroadcast(int udpfd, ClientAddr addr, map<ClientAddr, string> &addrc
 	auto it = addrcli.find(addr);
 	if(it == addrcli.end())
 	{
-		cout << "an illegal ip address " << addr.addr << ":" << addr.port << " message :";
-		Writen(fileno(stdout), msg, len, string("udp"));
-		cout << "this message will be ignored." << endl;
+		cout << "receive a message from an illegal ip address " << addr.addr << ":" << addr.port
+		       	<< ", it will be ignored." << endl;
 		return ;
 	}
 
+	Paint blue(color::blue);
+	Paint highlight(color::highlight);
+
 	msg[len] = '\0';
-	int n = snprintf(buf, MAXLINE, "\033[34m[%s]:\033[0m \033[1m%s\033[0m", it->second.c_str(), msg);
+	string name = blue.paint(it->second);
+	string broadmsg = highlight.paint(msg);
+	int n = snprintf(buf, MAXLINE, "[%s]: %s", name.c_str(), broadmsg.c_str());
 	if(n > MAXLINE)
 	{
 		cout << it->second << "(" << addr.addr << ":" << addr.port << ")'s message is long than buffer, we will ignore it" << endl;
@@ -539,7 +550,8 @@ void signalHandler(int signum)
 {
 	cout << "\n\nthe server will shutdown now" << endl;
 	cout << "notifying all clents..." << endl;
-	notifyAll(udplistenfd, addrcli, string("\n\n       Attention Please:\nThe Server Will Shutdown Now !!!\n\n"));
+	notifyAll(udplistenfd, addrcli, string("\n\n       Attention Please:\nThe Server Will Shutdown Now !!!\n\n"),
+			color::red);
 
 	cout << "close tcplistenfd..." << endl;
 	if(close(tcplistenfd) < 0)
