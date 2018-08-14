@@ -153,9 +153,11 @@ bool udpConnect(ClientInfo *cli)
 bool login(ClientInfo *cli)
 {
 	AuthResultPacket res;
-	int count;
-	for(int count = 0; count < 5; count++)
+	int iter;
+	for(iter = 0; iter < 5; iter++)
 	{
+		cli->name.clear();
+		cli->passwd.clear();
 		do{
 			cout << "login:";
 			cin >> cli->name;
@@ -187,13 +189,13 @@ bool login(ClientInfo *cli)
 			return false;
 		}
 
-		if(res.result == 0)
+		if(res.result == AUTH_RESULT_PASSED)
 			break;
 
 		cout << "login failure." << endl;
 		cout << res.msg << endl;
 	}
-	if(count == 5)
+	if(iter >= 5)
 		return false;
 
 	cout << "login successfully." << endl;
