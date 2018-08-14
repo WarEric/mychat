@@ -1,3 +1,4 @@
+#include<iostream>
 #include<string.h>
 #include<string>
 #include"packet.h"
@@ -74,7 +75,7 @@ int64_t encode_login_packet(const LoginPacket &pkt, char buff[], size_t maxlen)
 bool decode_login_packet(LoginPacket &pkt, char buff[])
 {
 	char msg[MAXLINE];
-	int len;
+	uint8_t strlen;
 	char *ptr = buff;
 
 	//decode type
@@ -82,33 +83,33 @@ bool decode_login_packet(LoginPacket &pkt, char buff[])
 	ptr += 1;
 
 	//decode name
-	memcpy(&len, ptr, 1);
+	memcpy(&strlen, ptr, 1);
 	ptr += 1;
-	if(len > MAXLINE)
+	if(strlen > MAXLINE)
 		return false;
 
-	memcpy(msg, ptr, len);
-	ptr += len;
+	memcpy(msg, ptr, strlen);
+	ptr += strlen;
 	pkt.name = string(msg);
 
 	//decode passwd
-	memcpy(&len, ptr, 1);
+	memcpy(&strlen, ptr, 1);
 	ptr += 1;
-	if(len > MAXLINE)
+	if(strlen > MAXLINE)
 		return false;
 
-	memcpy(msg, ptr, len);
-	ptr += len;
+	memcpy(msg, ptr, strlen);
+	ptr += strlen;
 	pkt.passwd = string(msg);
 
 	//decode cliaddr
-	memcpy(&len, ptr, 1);
+	memcpy(&strlen, ptr, 1);
 	ptr += 1;
-	if(len > MAXLINE)
+	if(strlen > MAXLINE)
 		return false;
 
-	memcpy(msg, ptr, len);
-	ptr += len;
+	memcpy(msg, ptr, strlen);
+	ptr += strlen;
 	pkt.cliaddr = string(msg);
 
 	//decode cliport
@@ -159,7 +160,7 @@ int64_t encode_auth_result_packet(const AuthResultPacket &pkt, char buff[], size
 bool decode_auth_result_packet(AuthResultPacket &pkt, char buff[])
 {
 	char msg[MAXLINE];
-	int len;
+	uint8_t strlen;
 	char *ptr = buff;
 
 	//decode type
@@ -171,13 +172,13 @@ bool decode_auth_result_packet(AuthResultPacket &pkt, char buff[])
 	ptr += 1;
 
 	//decode msg
-	memcpy(&len, ptr, 1);
+	memcpy(&strlen, ptr, 1);
 	ptr += 1;
-	if(len > MAXLINE)
+	if(strlen > MAXLINE)
 		return false;
 
-	memcpy(msg, ptr, len);
-	ptr += len;
+	memcpy(msg, ptr, strlen);
+	ptr += strlen;
 	pkt.msg = string(msg);
 
 	return true;

@@ -3,8 +3,8 @@
 #include<string>
 #include<stdint.h>
 
-#define LOGIN_TYPE 1
-#define AUTH_RESULT_TYPE 2
+#define LOGIN_TYPE 				1
+#define AUTH_RESULT_TYPE			2
 
 #define AUTH_RESULT_PASSED			0	// The user passed the verification.
 #define AUTH_RESULT_ERROR_LOGGEDIN		1	// The user already has logged in.
@@ -17,7 +17,7 @@ using std::string;
 
 class LoginPacket{
 	public:
-		LoginPacket(const string &account, const string &passkey, const string &addr, uint32_t port):
+		LoginPacket(const string account, const string passkey, const string addr, uint32_t port):
        			type(LOGIN_TYPE), name(account), passwd(passkey), cliaddr(addr), cliport(port){}
 		LoginPacket():type(LOGIN_TYPE){}
 
