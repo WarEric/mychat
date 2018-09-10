@@ -16,10 +16,19 @@
 #include "Code.h"
 class ByteOrderCode: public Code{
 	public:
+		static ByteOrderCode* getInstance();
+		static void destoryInstance();
+
 		int64_t encode_login_packet(const LoginPacket &pkt, char buff[], size_t maxlen);
 		bool decode_login_packet(LoginPacket &pkt, char buff[]);
 		
 		int64_t encode_auth_result_packet(const AuthResultPacket &pkt, char buff[], size_t maxlen);
 		bool decode_auth_result_packet(AuthResultPacket &pkt, char buff[]);
+
+	private:
+		ByteOrderCode();
+		static ByteOrderCode* instance;
 };
+
+ByteOrderCode* ByteOrderCode::instance = nullptr;
 #endif
