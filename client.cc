@@ -1,309 +1,256 @@
-#include<iostream>
-#include<string>
-#include<cstdlib>
-#include<unistd.h>
-#include<sys/types.h>
-#include<sys/socket.h>
-#include<arpa/inet.h>
-#include<signal.h>
-#include<strings.h>
-#include"ClientInfo.h"
-#include"packet.h"
-#include"write.h"
-#include"read.h"
-#define MAXLINE 4096
+/*
+ * A CLI client program. With the help of udp protocol. you can use this client to chat with others.
+ * by wareric@163.com
+ * 2018-09-06
+ */
+#include <iostream>
+#include <signal.h>
+#include <unistd.h>
+#include <arpa/inet.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include "client.h"
+#include "wrapio.h"
+#include "ByteOrderCode.h"
+#include "HidenPasswd.h"
+#include "Packet.h"
 
 using std::cout;
 using std::cin;
 using std::endl;
-using std::string;
 
-bool tcpConnect(ClientInfo *cli);
-bool udpConnect(ClientInfo *cli);
+int confd = -1;	//control fd
+int chatfd = -1;
+int heartfd = -1;
 
-bool login(ClientInfo *cli);
-bool inputPassword(string &str);
-bool chat(ClientInfo *cli);
-
-bool closeTcp(ClientInfo *cli);
-bool closeUdp(ClientInfo *cli);
-
-void signalHandler(int signum);
-
-int max(int x, int y);
-
-ClientInfo *cliInfo;
 int main(int argc, char *argv[])
 {
 	if(argc != 2)
 	{
 		cout << "input format is wrong, example like this:\n"
 			<< "./client <IPaddress>" << endl;
-		exit(1);
+		exit(EXIT_CLIENT_INPUT_ARG_WRONG);
 	}
-	
-	cliInfo = new ClientInfo();
-	cliInfo->servaddr = string(argv[1]);
+	char *servaddr = argv[1];
 
 	signal(SIGINT, signalHandler);
+	
+	Code* code = ByteOrderCode::getInstance();
+	Passwd* passwd = HidenPasswd::getInstance();
 
-	if(tcpConnect(cliInfo) == false)
-		exit(2);
-
-	if(udpConnect(cliInfo) == false)
+	if(login(code, passwd, servaddr, SERVER_LOGIN_PORT) == false)
 	{
-		closeTcp(cliInfo);
-		exit(3);
-	}
-
-	if(login(cliInfo) == false)
-	{
-		closeTcp(cliInfo);
-		exit(4);
-	}
-
-	if(chat(cliInfo) == false)
-	{
-		closeUdp(cliInfo);
-		closeTcp(cliInfo);
-		exit(5);
+		cout << "login failure, we will exit now." << endl;
+		exit(EXIT_CLIENT_LOGIN_FAILURE);
 	}
 
 	return 0;
 }
 
-bool tcpConnect(ClientInfo *cli)
+bool login(Code* code, Passwd* passwd, char *servaddr, int servport)
 {
-	int n;
-	struct sockaddr_in servaddr;
-
-	cli->tcpfd = socket(AF_INET, SOCK_STREAM, 0);
-	if(cli->tcpfd < 0)
+	if((confd = udpsocket()) < 0)
 	{
-		cout << "TCP socket error" << endl;
+		cout << "get confd socket error." << endl;
 		return false;
 	}
 
-	bzero(&servaddr, sizeof(servaddr));
-	servaddr.sin_family = AF_INET;
-	servaddr.sin_port = htons(cli->servport);
-	n = inet_pton(AF_INET, cli->servaddr.c_str(), &servaddr.sin_addr);
-	if(n < 0){
-		cout << "convert presentation " << cliInfo->servaddr << " to numeric wrong." << endl;
-		return false;
-	}else if(n == 0){
-		cout << "invalid ip address: " << cliInfo->servaddr;
-		return false;
-	}
-
-	//we can handle error type here
-	if(connect(cli->tcpfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
+	if(udpconnect(confd, string(servaddr), servport) == false)
 	{
-		cout << "TCP connect error" << endl;
+		cout << "confd connect error." << endl;
 		return false;
 	}
-	
-	return true;
-}
 
-bool udpConnect(ClientInfo *cli)
-{
-	int n;
-	cli->udpfd = socket(AF_INET, SOCK_DGRAM, 0);
-	if(cli->udpfd < 0)
+	if((chatfd = udpsocket()) < 0)
 	{
-		cout << "UDP socket error" << endl;
+		cout << "get chatfd socket error." << endl;
 		return false;
 	}
 
-	struct sockaddr_in servaddr;
-	bzero(&servaddr, sizeof(servaddr));
-	servaddr.sin_family = AF_INET;
-	servaddr.sin_port = htons(cli->servport);
-	n = inet_pton(AF_INET, cli->servaddr.c_str(), &servaddr.sin_addr);
-	if(n < 0){
-		cout << "convert presentation " << cli->servaddr << " to numeric wrong." << endl;
-		return false;
-	}else if(n == 0){
-		cout << "invalid ip address: " << cli->servaddr;
-		return false;
-	}
-
-	if(connect(cli->udpfd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
+	if((heartfd = udpsocket()) < 0)
 	{
-		cout << "UDP connect error" << endl;
+		cout << "get heartfd socket error." << endl;
 		return false;
 	}
 
-	//get local udp ipaddress and port
-	struct sockaddr_in cliaddr;
-	socklen_t len = sizeof(cliaddr);
-	if(getsockname(cli->udpfd, (struct sockaddr *)&cliaddr, &len) == -1)
+	LoginPacket logpkt;
+	if( (logpkt.chatport = getsockport(chatfd)) < 0)
 	{
-                cout << "udpfd(" << cli->udpfd << ") can't getsockname." << endl;
+		cout << "get chatfd port wrong" << endl;
 		return false;
 	}
-	cli->cliaddr = string(inet_ntoa(cliaddr.sin_addr));
-	cli->cliport = ntohs(cliaddr.sin_port);
 
-	return true;
-}
+	if( (logpkt.heartport = getsockport(heartfd)) < 0)
+	{
+		cout << "get hearfd port wrong" << endl;
+		return false;
+	}
 
-//this an easy solution, we can make it better in another time.
-bool login(ClientInfo *cli)
-{
 	AuthResultPacket res;
-	int iter;
-	for(iter = 0; iter < 5; iter++)
+	for(int iter = 0;;)
 	{
-		cli->name.clear();
-		cli->passwd.clear();
 		do{
+			logpkt.name.clear();
+			logpkt.passwd.clear();
+
 			cout << "login:";
-			cin >> cli->name;
-		}while(inputPassword(cli->passwd) != true);
+			cin >> logpkt.name;
+		}while(passwd->getpasswd(logpkt.passwd) != true);
 
 		char buff[MAXLINE];
-
-		LoginPacket pkt(cli->name, cli->passwd, cli->cliaddr, cli->cliport);
-		int64_t datalen = encode_login_packet(pkt, buff, MAXLINE);
-
-		Writen(cli->tcpfd, &datalen, sizeof(int64_t), string("tcp"));
-		Writen(cli->tcpfd, buff, datalen, string("tcp"));
-
-
-		if(Read(cli->tcpfd, &datalen, sizeof(int64_t), string("tcp")) != sizeof(int64_t))
+		int datalen = code->encode_login_packet(logpkt, buff, sizeof(buff));
+		if(datalen < 0)
+		{
+			cout << "encode login packet wrong" << endl;
 			return false;
-		if(Read(cli->tcpfd, buff, datalen, string("tcp")) != datalen)
-			return false;
+		}
 
-		if(decode_auth_result_packet(res, buff) == false)
+		//send login msg to server
+		if(writen_wrap(confd, buff, datalen) < 0)
+		{
+			cout << "write confd error" << endl;
+			return false;
+		}
+		
+		//get feedback from server
+		if(read(confd, buff, MAXLINE) == 0){
+			cout << "server terminated" << endl;
+			//throw a signal.
+			return false;
+		}
+
+		if(code->decode_auth_result_packet(res, buff) == false)
 		{
 			cout << "auth result decode error!" << endl;
 			return false;
 		}
-
-		if(res.type != AUTH_RESULT_TYPE)
+		
+		if(res.type != TYPE_AUTH_RESULT)
 		{
 			cout << "unmatch result type of login" << endl;
 			return false;
 		}
-
+		
 		if(res.result == AUTH_RESULT_PASSED)
 			break;
-
+		
+		//we could do more here.
 		cout << "login failure." << endl;
-		cout << res.msg << endl;
+		cout << res.msg << endl;	
+		
+		if(++iter >= LOGIN_TRY_MAX_NUMBER)
+			return false;
 	}
-	if(iter >= 5)
-		return false;
-
+	
 	cout << "login successfully." << endl;
 	cout << res.msg << endl;
 
-	return true;
-}
-
-//This is not the best way. System man recommend termios as a better way
-bool inputPassword(string &str)
-{
-	char *passwd = getpass("passwd:");
-	str = string(passwd);
-
-	if(str.empty())
+	if(success_login_connect(chatfd, res.chatport, heartfd, res.heartport, string(servaddr)) == false)
+	{
+		cout << "connect chatfd and heartfd error." << endl;
+		//we should notify server we will exit.
 		return false;
-	else
-		return true;
-}
-
-bool chat(ClientInfo *cli)
-{
-	int maxfd, n;
-	fd_set rset;
-	char buf[MAXLINE];
-
-	while(1)
-	{
-
-		FD_ZERO(&rset);
-		FD_SET(fileno(stdin), &rset);
-		FD_SET(cli->udpfd, &rset);
-		FD_SET(cli->tcpfd, &rset);
-
-		maxfd = max(cli->tcpfd, cli->udpfd) + 1;
-		maxfd = max(maxfd, fileno(stdin));
-
-		if(select(maxfd, &rset, NULL, NULL, NULL) < 0)
-		{
-			cout << "select error" << endl;
-			return false;
-		}
-
-		if(FD_ISSET(cli->udpfd, &rset)){
-			if( (n = read(cli->udpfd, buf, MAXLINE)) == 0){
-				cout << "server terminated" << endl;
-				return false;
-			}
-			write(fileno(stdout), buf, n);
-		}
-
-		if(FD_ISSET(fileno(stdin), &rset)){
-			if( (n = read(fileno(stdin), buf, MAXLINE)) < 0)
-			{
-				cout << "Read input error" << endl;
-				return false;
-			}
-			write(cli->udpfd, buf, n);
-		}
-
-		if(FD_ISSET(cli->tcpfd, &rset)){
-			if((n = read(cli->tcpfd, buf, MAXLINE)) <= 0)
-			{
-				if(n == 0)
-				{
-					cout << "remote server tcp connection shutdown, we will exit now" << endl;
-					return false;
-				}
-				else{
-					cout << "read tcp error" << endl;
-					return false;
-				}
-			}
-		}
 	}
 	return true;
 }
 
-bool closeTcp(ClientInfo *cli)
+int udpsocket()
 {
-	if(cli->tcpfd >= 0)
+	return socket(AF_INET, SOCK_DGRAM, 0);
+}
+
+/*
+ * string addr is a presentation ip like 192.168.1.1, not bin code.
+ */
+bool udpconnect(int fd, string addr, int port)
+{
+	int n = 0;
+
+	struct sockaddr_in servaddr;
+	bzero(&servaddr, sizeof(servaddr));
+	servaddr.sin_family = AF_INET;
+	servaddr.sin_port = htons(port);
+
+	if((n = inet_pton(AF_INET, addr.c_str(), &servaddr.sin_addr)) < 0)
 	{
-		close(cli->tcpfd);
-		cout << "Tcp socket closed" << endl;
+		cout << "convert presentation " << addr << " to numeric wrong." << endl;
+		return false;
+	}else if(n == 0){
+		cout << "invalid ip address: " << addr;
+		return false;
+	}
+	if(connect(fd, (struct sockaddr *)&servaddr, sizeof(servaddr)) < 0)
+	{
+		cout << "udp connect error" << endl;
+		return false;
 	}
 	return true;
 }
 
-bool closeUdp(ClientInfo *cli)
+/*
+ * connect heartfd and chatfd
+ */
+bool success_login_connect(int chatfd, int chatport, int heartfd, int heartport, string addr)
 {
-	if(cliInfo->udpfd >= 0)
+	if(udpconnect(chatfd, addr, chatport) == false)
 	{
-		close(cliInfo->udpfd);
-		cout << "Udp socket closed" << endl;
+		cout << "chatfd connect error" << endl;
+		return false;
 	}
+
+	if(udpconnect(heartfd, addr, heartport) == false)
+	{
+		cout << "heartfd connect error" << endl;
+		return false;
+	}
+
 	return true;
+}
+
+int getsockport(int fd)
+{
+	struct sockaddr_in cliaddr;
+	socklen_t len = sizeof(cliaddr);
+	if(getsockname(fd, (struct sockaddr*)&cliaddr, &len) == -1)
+	{
+		cout << "udpfd(" << fd << ") can't getsockname." << endl;
+		return -1;
+	}
+
+	return ntohs(cliaddr.sin_port);
+}
+
+string getsockaddr(int fd)
+{
+	struct sockaddr_in cliaddr;
+	socklen_t len = sizeof(cliaddr);
+	if(getsockname(fd, (struct sockaddr*)&cliaddr, &len) == -1)
+	{
+		cout << "udpfd(" << fd << ") can't getsockname." << endl;
+		return string();
+	}
+	return string(inet_ntoa(cliaddr.sin_addr));
+}
+
+void clearfd_exit(int num)
+{
+	cout << "the program is exiting..." << endl;
+	if(confd >= 0)
+	{
+		//notify server
+		close(confd);
+	}
+
+	if(heartfd >= 0)
+		close(heartfd);
+
+	if(chatfd >= 0)
+		close(chatfd);
+
 }
 
 void signalHandler(int signum)
 {
 	cout << "\nwe will exit from this chat" << endl;
-	closeUdp(cliInfo);
-	closeTcp(cliInfo);
-	cout<< "exit success." << endl;
-	exit(0);
-}
-
-int max(int x, int y)
-{
-	return x > y ? x : y ;
+	clearfd_exit(0);
 }
