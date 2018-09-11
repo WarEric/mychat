@@ -17,9 +17,7 @@ class HidenPasswd : public Passwd{
 		bool getpasswd(string &passwd);
 
 	private:
-		HidenPasswd();
+		HidenPasswd(){}
 		static HidenPasswd* instance;
 };
-
-HidenPasswd* HidenPasswd::instance = nullptr;
 #endif

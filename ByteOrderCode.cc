@@ -6,6 +6,8 @@
 #include "ByteOrderCode.h"
 #define MAXLINE 4096
 
+ByteOrderCode* ByteOrderCode::instance = nullptr;
+
 ByteOrderCode* ByteOrderCode::getInstance()
 {
 	if(instance == nullptr)
@@ -21,7 +23,6 @@ void ByteOrderCode::destoryInstance()
 		instance = nullptr;
 	}
 }
-
 int64_t ByteOrderCode::encode_login_packet(const LoginPacket &pkt, char buff[], size_t maxlen)
 {
 	uint8_t strlen = 0;

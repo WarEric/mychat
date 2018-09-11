@@ -6,6 +6,8 @@
 #include <unistd.h>
 #include "HidenPasswd.h"
 
+HidenPasswd* HidenPasswd::instance = nullptr;
+
 HidenPasswd* HidenPasswd::getInstance()
 {
 	if(instance == nullptr)

@@ -26,9 +26,7 @@ class ByteOrderCode: public Code{
 		bool decode_auth_result_packet(AuthResultPacket &pkt, char buff[]);
 
 	private:
-		ByteOrderCode();
+		ByteOrderCode(){}
 		static ByteOrderCode* instance;
 };
-
-ByteOrderCode* ByteOrderCode::instance = nullptr;
 #endif
