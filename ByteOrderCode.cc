@@ -63,23 +63,8 @@ int64_t ByteOrderCode::encode_login_packet(const LoginPacket &pkt, char buff[], 
 	if(len > maxlen)
 		return -1;
 
-
-	//encode cliaddr;
-	strlen = pkt.addr.size()+1;// add \0
-	memcpy(ptr, &strlen, 1);
-	ptr += 1;
-	len += 1;
-	if(len > maxlen)
-		return -1;
-
-	memcpy(ptr, pkt.addr.c_str(), strlen);
-	ptr += strlen;
-	len += strlen;
-	if(len > maxlen)
-		return -1;
-
-	//encode msgport
-	memcpy(ptr, &pkt.msgport, sizeof(uint32_t));
+	//encode chatport
+	memcpy(ptr, &pkt.chatport, sizeof(uint32_t));
 	ptr += sizeof(uint32_t);
 	len += sizeof(uint32_t);
 	if(len > maxlen)
@@ -125,18 +110,8 @@ bool ByteOrderCode::decode_login_packet(LoginPacket &pkt, char buff[])
 	ptr += strlen;
 	pkt.passwd = string(msg);
 
-	//decode addr
-	memcpy(&strlen, ptr, 1);
-	ptr += 1;
-	if(strlen > MAXLINE)
-		return false;
-
-	memcpy(msg, ptr, strlen);
-	ptr += strlen;
-	pkt.addr = string(msg);
-
-	//decode msgport
-	memcpy(&pkt.msgport, ptr, sizeof(uint32_t));
+	//decode chatport
+	memcpy(&pkt.chatport, ptr, sizeof(uint32_t));
 	ptr += sizeof(uint32_t);
 
 	//decode heartport

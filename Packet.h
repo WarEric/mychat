@@ -27,8 +27,7 @@ class LoginPacket{
 		uint8_t type;
 		string name;
 		string passwd;
-		string addr;
-		uint32_t msgport;		//used for establish connection and chat. udp.
+		uint32_t chatport;		//udp
 		uint32_t heartport;		//udp
 };
 
