@@ -12,4 +12,8 @@
  * my wrap sendto function, it will print error reason when error occurs.
  */
 ssize_t sendto_wrap(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen);
+
+ssize_t writen(int fd, const void *buf, size_t n);
+
+ssize_t writen_wrap(int fd, void *ptr, size_t nbytes);
 #endif

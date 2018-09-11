@@ -3,6 +3,7 @@
  * 2018-09-10
  */
 #include <iostream>
+#include <unistd.h>
 #include "wrapio.h"
 
 using std::cout;
@@ -93,4 +94,35 @@ ssize_t sendto_wrap(int sockfd, const void *buf, size_t len, int flags, const st
 	}
 
 	return res;
+}
+
+ssize_t writen(int fd, const void *buf, size_t n)
+{
+	size_t nleft;
+	ssize_t nwritten;
+	const char *ptr;
+	
+	ptr = (char *)buf;
+	nleft = n;
+	while(nleft > 0){
+		if( (nwritten = write(fd, ptr, nleft)) <= 0) {
+			if(nwritten < 0 && errno == EINTR)								
+				nwritten = 0;
+			else
+				return (-1);
+		}
+		
+		nleft -= nwritten;
+		ptr   += nwritten;
+	}
+	return (n);
+}
+
+ssize_t writen_wrap(int fd, void *ptr, size_t nbytes)
+{
+	if(writen(fd, ptr, nbytes) != nbytes)
+	{
+		cout << "writen_wrap error" << endl;
+		return -1;
+	}
 }
