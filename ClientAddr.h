@@ -1,21 +1,19 @@
-#ifndef CLIENTADDR_H_
-#define CLIENTADDR_H_
-#include<string>
-#include<stdint.h>
+/**
+ * it record client address and port information. In this way,
+ * we can quickly get it's client name by using it as a key of map.
+ *
+ * by wareric@163.com
+ * 2018-09-12
+ */
+#ifndef CLIENTADDR_H_H
+#define CLIENTADDR_H_H
+#include <string>
+#include <stdint.h>
 using std::string;
 
 class ClientAddr{
 	public:
-		friend bool operator < (const ClientAddr &addr1, const ClientAddr &addr2);
-
 		ClientAddr(){}
-		ClientAddr(const ClientAddr &);
-		ClientAddr& operator=(const ClientAddr&);
-
-		bool operator==(const ClientAddr &orig);
-		bool operator!=(const ClientAddr &orig);
-		bool operator>(const ClientAddr &orig);
-		bool operator<(const ClientAddr &orig);
 
 		string addr;
 		uint16_t port;
