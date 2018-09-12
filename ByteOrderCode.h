@@ -19,11 +19,27 @@ class ByteOrderCode: public Code{
 		static ByteOrderCode* getInstance();
 		static void destoryInstance();
 
+		uint8_t getType(char buff[]);
+	
+		//inet socket domain packet
 		int64_t encode_login_packet(const LoginPacket &pkt, char buff[], size_t maxlen);
 		bool decode_login_packet(LoginPacket &pkt, char buff[]);
+	
+		int64_t encode_logout_packet(const LogoutPacket &pkt, char buff[], size_t maxlen);
+		bool decode_logout_packet(LogoutPacket &pkt, char buff[]);
 		
 		int64_t encode_auth_result_packet(const AuthResultPacket &pkt, char buff[], size_t maxlen);
 		bool decode_auth_result_packet(AuthResultPacket &pkt, char buff[]);
+
+		//server unix socket domain packet
+		int64_t encode_startup_packet(const StartUpPacket &pkt, char buff[], size_t maxlen);
+		bool decode_startup_packet(StartUpPacket &pkt, char buff[]);
+		
+		int64_t encode_exist_packet(const ExistPacket &pkt, char buff[], size_t maxlen);
+		bool decode_exist_packet(ExistPacket &pkt, char buff[]);
+		
+		int64_t encode_broadcast_packet(const BroadcastPacket &pkt, char buff[], size_t maxlen);
+		bool decode_broadcast_packet(BroadcastPacket &pkt, char buff[]);
 
 	private:
 		ByteOrderCode(){}
