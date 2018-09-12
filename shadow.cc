@@ -1,4 +1,10 @@
-#include "GetShadow.h"
+/**
+ * operator shadows file function
+ *
+ * by wareric@163.com
+ * 2018-09-12
+ */
+#include "shadow.h"
 #include <fstream>
 #include <iostream>
 
@@ -78,8 +84,7 @@ bool AnalyseLine(const string &line, string &key, string &value)
 	return true;
 }
  
-//read data
- bool ReadConfig(const string & filename, map<string, string> & m)
+ bool readshadowfile(const string & filename, map<string, string> & m)
  {
 	 m.clear();
 	 ifstream infile(filename);
