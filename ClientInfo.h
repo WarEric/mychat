@@ -1,21 +1,21 @@
+/*
+ * client info including name, passwd, ip, udpport
+ * by wareric@163.com
+ * 2018-09-06
+ */
 #ifndef CLIENT_H_
 #define CLIENT_H_
-#include<string>
+#include <string>
+#include <stdint.h>
 using std::string;
 
-#define SERVPORT 63353
 class ClientInfo{
 	public:
-		ClientInfo():servport(SERVPORT), udpfd(-1), tcpfd(-1){}
-		ClientInfo(string nickname):name(nickname),servport(SERVPORT), udpfd(-1), tcpfd(-1){}
-
 		string name;
 		string passwd;
-		string cliaddr;		//udp 
-		string servaddr;	//udp and tcp
-		int servport;		//udp and tcp
-		int cliport;		//udp
-		int udpfd;
-		int tcpfd;
+		string addr;
+		uint32_t connport;
+		uint32_t chatport;		//udp
+		uint32_t heartport;		//udp
 };
 #endif
