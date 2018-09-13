@@ -31,6 +31,10 @@ class ByteOrderCode: public Code{
 		int64_t encode_auth_result_packet(const AuthResultPacket &pkt, char buff[], size_t maxlen);
 		bool decode_auth_result_packet(AuthResultPacket &pkt, char buff[]);
 
+		int64_t encode_shutdown_packet(const ShutdownPacket &pkt, char buff[], size_t maxlen);
+		bool decode_shutdown_packet(ShutdownPacket &pkt, char buff[]);
+		
+
 		//server unix socket domain packet
 		int64_t encode_startup_packet(const StartUpPacket &pkt, char buff[], size_t maxlen);
 		bool decode_startup_packet(StartUpPacket &pkt, char buff[]);

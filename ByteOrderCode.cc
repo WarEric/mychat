@@ -294,6 +294,32 @@ bool ByteOrderCode::decode_auth_result_packet(AuthResultPacket &pkt, char buff[]
 	return true;
 }
 
+int64_t ByteOrderCode::encode_shutdown_packet(const ShutdownPacket &pkt, char buff[], size_t maxlen)
+{	
+	int64_t len = 0;
+	char *ptr = buff;
+
+	//encode type
+	memcpy(ptr, &pkt.type, 1);
+	ptr += 1;
+	len += 1;
+	if(len > maxlen)
+		return -1;
+
+	return len;
+}
+
+bool ByteOrderCode::decode_shutdown_packet(ShutdownPacket &pkt, char buff[])
+{
+	char *ptr = buff;
+
+	//decode type
+	memcpy(&pkt.type, ptr, 1);
+	ptr += 1;
+
+	return true;
+}
+
 int64_t ByteOrderCode::encode_startup_packet(const StartUpPacket &pkt, char buff[], size_t maxlen)
 {	
 	int64_t len = 0;

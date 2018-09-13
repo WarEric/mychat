@@ -23,6 +23,9 @@ class Code{
 		virtual int64_t encode_auth_result_packet(const AuthResultPacket &pkt, char buff[], size_t maxlen) = 0;
 		virtual bool decode_auth_result_packet(AuthResultPacket &pkt, char buff[]) = 0;
 
+		virtual int64_t encode_shutdown_packet(const ShutdownPacket &pkt, char buff[], size_t maxlen) = 0;
+		virtual bool decode_shutdown_packet(ShutdownPacket &pkt, char buff[]) = 0;
+
 
 		//server unix socket domain packet
 		virtual int64_t encode_startup_packet(const StartUpPacket &pkt, char buff[], size_t maxlen) = 0;
