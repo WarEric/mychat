@@ -130,6 +130,84 @@ bool ByteOrderCode::decode_login_packet(LoginPacket &pkt, char buff[])
 	return true;
 }
 
+int64_t ByteOrderCode::encode_logout_packet(const LogoutPacket &pkt, char buff[], size_t maxlen)
+{
+	uint8_t strlen = 0;
+	int64_t len = 0;
+	char *ptr = buff;
+
+	//encode type
+	memcpy(ptr, &pkt.type, 1);
+	ptr += 1;
+	len += 1;
+	if(len > maxlen)
+		return -1;
+
+	//encode name
+	strlen = pkt.name.size()+1;// add \0
+	memcpy(ptr, &strlen, 1);
+	ptr += 1;
+	len += 1;
+	if(len > maxlen)
+		return -1;
+
+	memcpy(ptr, pkt.name.c_str(), strlen);
+	ptr += strlen;
+	len += strlen;
+	if(len > maxlen)
+		return -1;
+
+	//encode passwd
+	strlen = pkt.passwd.size()+1;// add \0
+	memcpy(ptr, &strlen, 1);
+	ptr += 1;
+	len += 1;
+	if(len > maxlen)
+		return -1;
+
+	memcpy(ptr, pkt.passwd.c_str(), strlen);
+	ptr += strlen;
+	len += strlen;
+	if(len > maxlen)
+		return -1;
+
+	return len;
+}
+
+bool ByteOrderCode::decode_logout_packet(LogoutPacket &pkt, char buff[])
+{
+	char msg[MAXLINE];
+	uint8_t strlen;
+	char *ptr = buff;
+
+	//decode type
+	memcpy(&pkt.type, ptr, 1);
+	ptr += 1;
+
+	//decode name
+	memcpy(&strlen, ptr, 1);
+	ptr += 1;
+	if(strlen > MAXLINE)
+		return false;
+
+	memcpy(msg, ptr, strlen);
+	ptr += strlen;
+	pkt.name = string(msg);
+
+	//decode passwd
+	memcpy(&strlen, ptr, 1);
+	ptr += 1;
+	if(strlen > MAXLINE)
+		return false;
+
+	memcpy(msg, ptr, strlen);
+	ptr += strlen;
+	pkt.passwd = string(msg);
+
+	return true;
+}
+
+
 int64_t ByteOrderCode::encode_auth_result_packet(const AuthResultPacket &pkt, char buff[], size_t maxlen)
 {	
 	uint8_t strlen = 0;
